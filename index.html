@@ -585,7 +585,7 @@
         Sign in with your work email and password. New team members can
         create an account, which the owner reviews and activates.
       </div>
-      <div style="text-align:right; margin-top:16px; font-size:9px; color:var(--ink-muted); letter-spacing:0.08em; text-transform:uppercase;">v0.5</div>
+      <div style="text-align:right; margin-top:16px; font-size:9px; color:var(--ink-muted); letter-spacing:0.08em; text-transform:uppercase;">v0.6</div>
     </div>
 
     <div id="signup-panel" style="display:none;">
@@ -2112,19 +2112,27 @@ function renderTimesheet() {
   const rows = entries.map(e => {
     const lmins = lunchMinutes(e);
     let statusHtml = '<span class="badge out">Present</span>';
+    /* COA indicator: this entry was created/corrected via an approved COA */
+    if (e.coaId) {
+      statusHtml += ' <span class="badge" style="background:#EAF2FB;color:#1E5BA8;border:1px solid #C3DBF2;font-size:10px;" title="Corrected via approved Certificate of Attendance">✎ COA</span>';
+    }
     let hoursDisplay = String(round2(workedHours(e)));
     if (lmins > 0) {
       if (isLunchOver(e)) {
-        statusHtml = '<span class="badge out">Present</span> <span class="badge" style="background:#FBE9E9;color:var(--vc-red);border:1px solid #F1C2C2;font-size:10px;">⚠ over lunch</span>';
+        statusHtml += ' <span class="badge" style="background:#FBE9E9;color:var(--vc-red);border:1px solid #F1C2C2;font-size:10px;">⚠ over lunch</span>';
         hoursDisplay += `<br><span style="color:var(--vc-red);font-size:10px;">lunch ${fmtLunchDuration(lmins)}</span>`;
       } else {
         hoursDisplay += `<br><span style="color:var(--ink-muted);font-size:10px;">lunch ${fmtLunchDuration(lmins)}</span>`;
       }
     }
+    /* Overnight marker: clock-out lands on a later PH day than clock-in */
+    const outDay = phYmd(new Date(e.clockOut));
+    const inDay = phYmd(new Date(e.clockIn));
+    const clockOutTxt = (outDay !== inDay) ? `${fmtTime(e.clockOut)} (+1)` : fmtTime(e.clockOut);
     return {
       date: e.date,
       clockIn: fmtTime(e.clockIn),
-      clockOut: fmtTime(e.clockOut),
+      clockOut: clockOutTxt,
       hours: hoursDisplay,
       statusHtml
     };
@@ -2709,6 +2717,9 @@ function renderAdminTimesheets() {
     const e = r.entry;    /* Hours cell: show worked hours; if lunch was over, flag with reason tooltip */
     const lmins = lunchMinutes(e);
     let hoursCell = `<span>${round2(workedHours(e))}</span>`;
+    if (e.coaId) {
+      hoursCell += ` <span class="badge" style="background:#EAF2FB;color:#1E5BA8;border:1px solid #C3DBF2;font-size:10px;" title="Corrected via approved Certificate of Attendance">✎ COA</span>`;
+    }
     if (lmins > 0) {
       const lunchTxt = fmtLunchDuration(lmins);
       if (isLunchOver(e)) {
@@ -2720,11 +2731,15 @@ function renderAdminTimesheets() {
     }
     /* Over-lunch row background subtle red so it pops in the table */
     const rowBg = isLunchOver(e) ? ' style="background:#FFF8F6;"' : '';
+    /* Overnight marker on clock-out */
+    const outDay = phYmd(new Date(e.clockOut));
+    const inDay = phYmd(new Date(e.clockIn));
+    const clockOutTxt = (outDay !== inDay) ? `${fmtTime(e.clockOut)} (+1)` : fmtTime(e.clockOut);
     return `<tr${rowBg}>
       <td>${r.user.name}</td>
       <td>${fmtDate(e.date)}</td>
       <td class="mono">${fmtTime(e.clockIn)}</td>
-      <td class="mono">${fmtTime(e.clockOut)}</td>
+      <td class="mono">${clockOutTxt}</td>
       <td class="mono">${hoursCell}</td>
       <td><button class="btn btn-danger btn-sm" onclick="confirmDeleteEntry('${e.id}')">Delete</button></td>
     </tr>`;
@@ -2977,6 +2992,7 @@ async function approveCoa(id) {
   toast('COA approved and applied to timesheet');
   renderCoaApprovals();
   renderCoaHistory();
+  renderAdminTimesheets();
   renderAdmin();
 }
 
