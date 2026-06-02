@@ -585,7 +585,7 @@
         Sign in with your work email and password. New team members can
         create an account, which the owner reviews and activates.
       </div>
-      <div style="text-align:right; margin-top:16px; font-size:9px; color:var(--ink-muted); letter-spacing:0.08em; text-transform:uppercase;">v0.7</div>
+      <div style="text-align:right; margin-top:16px; font-size:9px; color:var(--ink-muted); letter-spacing:0.08em; text-transform:uppercase;">v0.8</div>
     </div>
 
     <div id="signup-panel" style="display:none;">
@@ -2818,8 +2818,13 @@ function confirmDeleteEntry(entryId) {
   if (!e) return;
   const u = D.users.find(x => x.id === e.userId);
   document.getElementById('del-entry-id').value = entryId;
-  document.getElementById('del-entry-info').textContent =
-    `${u.name} · ${fmtDate(e.date)} · ${fmtTime(e.clockIn)} – ${fmtTime(e.clockOut)} (${round2(workedHours(e))} hrs)`;
+  let info = `${u.name} · ${fmtDate(e.date)} · ${fmtTime(e.clockIn)} – ${fmtTime(e.clockOut)} (${round2(workedHours(e))} hrs)`;
+  /* If this entry was created/corrected via an approved COA, deleting it will
+   * also remove that COA from the approvals history. Tell the admin up front. */
+  if (e.coaId && D.coas.some(c => c.id === e.coaId)) {
+    info += '  —  This entry came from an approved COA; its COA record will also be removed from history.';
+  }
+  document.getElementById('del-entry-info').textContent = info;
   document.getElementById('delete-entry-modal').classList.add('active');
 }
 
@@ -2829,14 +2834,33 @@ function closeDeleteEntryModal() {
 
 async function executeDeleteEntry() {
   const entryId = document.getElementById('del-entry-id').value;
-  /* Soft delete: stamp deleted_at so the row is preserved for audit but hidden
-   * from all queries (which filter `deleted_at IS NULL`). */
+  const e = D.entries.find(x => x.id === entryId);
+  const linkedCoaId = e && e.coaId ? e.coaId : null;
+
+  /* Soft delete the timesheet entry: stamp deleted_at so the row is preserved
+   * for audit but hidden from all queries (which filter `deleted_at IS NULL`). */
   const { error } = await sb.from('time_entries').update({ deleted_at: nowISO() }).eq('id', entryId);
   if (error) { toast('Delete failed: ' + error.message); return; }
   D.entries = D.entries.filter(x => x.id !== entryId);
+
+  /* If the entry was created/corrected via an approved COA, remove that COA too
+   * so it doesn't linger in the approvals history as an orphan. This is a hard
+   * delete — the COA is a correction request, not worked-time data. */
+  if (linkedCoaId && D.coas.some(c => c.id === linkedCoaId)) {
+    const { error: coaErr } = await sb.from('coa_requests').delete().eq('id', linkedCoaId);
+    if (coaErr) {
+      /* Entry is already deleted; just let the admin know the COA cleanup failed. */
+      toast('Entry deleted, but its linked COA could not be removed: ' + coaErr.message);
+    } else {
+      D.coas = D.coas.filter(c => c.id !== linkedCoaId);
+    }
+  }
+
   closeDeleteEntryModal();
   toast('Entry deleted');
   renderAdminTimesheets();
+  renderCoaApprovals();
+  renderCoaHistory();
   renderAdmin();
 }
 
