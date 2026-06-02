@@ -585,7 +585,7 @@
         Sign in with your work email and password. New team members can
         create an account, which the owner reviews and activates.
       </div>
-      <div style="text-align:right; margin-top:16px; font-size:9px; color:var(--ink-muted); letter-spacing:0.08em; text-transform:uppercase;">v0.8</div>
+      <div style="text-align:right; margin-top:16px; font-size:9px; color:var(--ink-muted); letter-spacing:0.08em; text-transform:uppercase;">v0.9</div>
     </div>
 
     <div id="signup-panel" style="display:none;">
@@ -1196,8 +1196,8 @@
  * On login we hydrate `D` from Supabase once. Every mutation writes to
  * Supabase FIRST (the source of truth), then updates the local cache and
  * re-renders. RLS guarantees employees only ever receive their own rows;
- * the admin receives everyone's. `saveData()` is intentionally a no-op now —
- * persistence happens via explicit Supabase calls in each mutation.
+ * the admin receives everyone's. There is no local persistence layer:
+ * Supabase is the single source of truth for every write.
  */
 const SUPABASE_URL = 'https://ajcsvguwsmganaxusgfp.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFqY3N2Z3V3c21nYW5heHVzZ2ZwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAxMzY3NDAsImV4cCI6MjA5NTcxMjc0MH0.rEr-jnteWXcTQ6f73b2m4RMGdht-GZ52f-U_OlRrNBU';
@@ -1289,10 +1289,6 @@ async function hydrate() {
   D.coas    = (coasRes.data     || []).map(coaFromRow);
 }
 
-/* saveData is now a no-op: each mutation persists explicitly to Supabase.
- * Kept so the many existing call sites don't need to be torn out. */
-function saveData() { /* persistence handled per-mutation via Supabase */ }
-
 /* The in-memory cache. session holds the logged-in user's UUID. */
 let D = { users: [], entries: [], leaves: [], coas: [], session: null };
 
@@ -1325,10 +1321,6 @@ function showMobileBlocked() {
   document.getElementById('mobile-blocked').style.display = 'flex';
 }
 
-function hideMobileBlocked() {
-  document.getElementById('mobile-blocked').style.display = 'none';
-}
-
 /* Returns the YYYY-MM-DD date in PH for a given UTC Date (default: now) */
 function phYmd(date) {
   const d = date || new Date();
@@ -1337,7 +1329,6 @@ function phYmd(date) {
 }
 
 function today() { return phYmd(); }
-function ymd(d) { return phYmd(d); }
 
 /* Day of week in PH: 0=Sun..6=Sat */
 function phDayOfWeek(dateStr) {
@@ -1366,6 +1357,15 @@ function fmtTime(iso) {
   return new Date(iso).toLocaleTimeString('en-US', {
     hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Manila'
   });
+}
+
+/* Format a clock-out time, appending "(+1)" when it lands on a later PH day
+ * than the clock-in (i.e. an overnight shift that crossed midnight). Used by
+ * the employee timesheet, the admin timesheet, and the COA views. */
+function clockOutLabel(clockInIso, clockOutIso) {
+  if (!clockOutIso) return '—';
+  const overnight = phYmd(new Date(clockInIso)) !== phYmd(new Date(clockOutIso));
+  return overnight ? `${fmtTime(clockOutIso)} (+1)` : fmtTime(clockOutIso);
 }
 
 /* Format a PH date string as "Mon, Jan 5" */
@@ -1490,14 +1490,6 @@ function getWorkingDaysInRange(start, end) {
 }
 
 /* True if the employee was on approved leave on the given date */
-function isOnApprovedLeave(userId, dateStr) {
-  return D.leaves.some(l =>
-    l.userId === userId &&
-    l.status === 'approved' &&
-    l.from <= dateStr && dateStr <= l.to
-  );
-}
-
 /* Returns the approved leave object covering this user+date, or null. */
 function getApprovedLeaveOn(userId, dateStr) {
   return D.leaves.find(l =>
@@ -1888,7 +1880,7 @@ function renderRecentEntries() {
   </tr>`).join('');
 }
 
-/* ============== SCREENSHOT CAPTURE ============== */
+/* ============== CLOCK IN / OUT / LUNCH ============== */
 
 async function clockIn() {
   const u = currentUser();
@@ -1921,37 +1913,63 @@ async function clockIn() {
   /* Self-healing for soft-deleted rows: the app hides soft-deleted entries, but
    * the database still has them. A plain insert can then collide with the
    * UNIQUE(user_id, work_date) constraint ("duplicate key ... work_date_key").
-   * So first look up ANY existing row for today (including soft-deleted ones),
-   * and if found, REVIVE it (clear deleted_at, reset to a fresh in-progress
-   * shift). Only insert a new row when none exists at all. */
-  let revived = null, lookupErr = null;
+   *
+   * After the partial-unique-index migration there can be at most ONE live
+   * (deleted_at IS NULL) row per user+date, but any number of soft-deleted ones.
+   * So we check in two explicit steps rather than grabbing an arbitrary row:
+   *   1. Is there a LIVE row for today? If completed, block (real worked time).
+   *      If in-progress, the activeEntry guard above already returned, so this
+   *      shouldn't occur — but we handle it defensively.
+   *   2. Otherwise, look for a SOFT-DELETED row to revive (reuse its id so we
+   *      don't collide). If none, insert a brand-new row. */
+  let liveErr = null, liveRow = null;
   {
     const res = await sb.from('time_entries')
       .select('*')
       .eq('user_id', u.id)
       .eq('work_date', t)
+      .is('deleted_at', null)
       .limit(1)
       .maybeSingle();
-    lookupErr = res.error;
-    revived = res.data;
+    liveErr = res.error; liveRow = res.data;
+  }
+  if (liveErr) {
+    toast('Clock-in failed: ' + liveErr.message);
+    btn.disabled = false; btn.textContent = 'Clock in';
+    return;
+  }
+  if (liveRow) {
+    /* A live row already exists for today. If completed, protect it; if somehow
+     * in-progress, treat as already clocked in. Either way, don't create another. */
+    if (liveRow.status === 'completed') {
+      toast('You already have a complete entry for today. File a COA request if there is a mistake.');
+    } else {
+      toast('You are already clocked in. Use Clock out to end your shift.');
+    }
+    btn.disabled = false; btn.textContent = 'Clock in';
+    return;
   }
 
-  if (lookupErr) {
-    toast('Clock-in failed: ' + lookupErr.message);
-    btn.disabled = false;
-    btn.textContent = 'Clock in';
+  /* No live row — look for a soft-deleted one to revive (most recent first). */
+  let revived = null, revErr = null;
+  {
+    const res = await sb.from('time_entries')
+      .select('*')
+      .eq('user_id', u.id)
+      .eq('work_date', t)
+      .not('deleted_at', 'is', null)
+      .order('clock_in', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    revErr = res.error; revived = res.data;
+  }
+  if (revErr) {
+    toast('Clock-in failed: ' + revErr.message);
+    btn.disabled = false; btn.textContent = 'Clock in';
     return;
   }
 
   if (revived) {
-    /* If a live (non-deleted) completed row somehow slipped past the cache
-     * guard above, don't overwrite real worked time. */
-    if (!revived.deleted_at && revived.status === 'completed') {
-      toast('You already have a complete entry for today. File a COA request if there is a mistake.');
-      btn.disabled = false;
-      btn.textContent = 'Clock in';
-      return;
-    }
     const { data, error } = await sb.from('time_entries')
       .update({
         clock_in: nowTs,
@@ -2190,14 +2208,10 @@ function renderTimesheet() {
         hoursDisplay += `<br><span style="color:var(--ink-muted);font-size:10px;">lunch ${fmtLunchDuration(lmins)}</span>`;
       }
     }
-    /* Overnight marker: clock-out lands on a later PH day than clock-in */
-    const outDay = phYmd(new Date(e.clockOut));
-    const inDay = phYmd(new Date(e.clockIn));
-    const clockOutTxt = (outDay !== inDay) ? `${fmtTime(e.clockOut)} (+1)` : fmtTime(e.clockOut);
     return {
       date: e.date,
       clockIn: fmtTime(e.clockIn),
-      clockOut: clockOutTxt,
+      clockOut: clockOutLabel(e.clockIn, e.clockOut),
       hours: hoursDisplay,
       statusHtml
     };
@@ -2315,9 +2329,7 @@ function eligibleCoaDates() {
 
 /* Formats the clock-out cell, appending "(+1)" if the COA spans midnight. */
 function coaClockOutLabel(c) {
-  const inDay = phYmd(new Date(c.clockIn));
-  const outDay = phYmd(new Date(c.clockOut));
-  return outDay !== inDay ? `${fmtTime(c.clockOut)} (+1)` : fmtTime(c.clockOut);
+  return clockOutLabel(c.clockIn, c.clockOut);
 }
 /* Short lunch summary for a COA, e.g. "12:00 PM–1:00 PM (60m)" or "—". */
 function coaLunchLabel(c) {
@@ -2796,15 +2808,11 @@ function renderAdminTimesheets() {
     }
     /* Over-lunch row background subtle red so it pops in the table */
     const rowBg = isLunchOver(e) ? ' style="background:#FFF8F6;"' : '';
-    /* Overnight marker on clock-out */
-    const outDay = phYmd(new Date(e.clockOut));
-    const inDay = phYmd(new Date(e.clockIn));
-    const clockOutTxt = (outDay !== inDay) ? `${fmtTime(e.clockOut)} (+1)` : fmtTime(e.clockOut);
     return `<tr${rowBg}>
       <td>${r.user.name}</td>
       <td>${fmtDate(e.date)}</td>
       <td class="mono">${fmtTime(e.clockIn)}</td>
-      <td class="mono">${clockOutTxt}</td>
+      <td class="mono">${clockOutLabel(e.clockIn, e.clockOut)}</td>
       <td class="mono">${hoursCell}</td>
       <td><button class="btn btn-danger btn-sm" onclick="confirmDeleteEntry('${e.id}')">Delete</button></td>
     </tr>`;
