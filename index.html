@@ -585,7 +585,7 @@
         Sign in with your work email and password. New team members can
         create an account, which the owner reviews and activates.
       </div>
-      <div style="text-align:right; margin-top:16px; font-size:9px; color:var(--ink-muted); letter-spacing:0.08em; text-transform:uppercase;">v0.6</div>
+      <div style="text-align:right; margin-top:16px; font-size:9px; color:var(--ink-muted); letter-spacing:0.08em; text-transform:uppercase;">v0.7</div>
     </div>
 
     <div id="signup-panel" style="display:none;">
@@ -1915,10 +1915,75 @@ async function clockIn() {
   btn.disabled = true;
   btn.textContent = 'Clocking in...';
 
+  const t = today();
+  const nowTs = nowISO();
+
+  /* Self-healing for soft-deleted rows: the app hides soft-deleted entries, but
+   * the database still has them. A plain insert can then collide with the
+   * UNIQUE(user_id, work_date) constraint ("duplicate key ... work_date_key").
+   * So first look up ANY existing row for today (including soft-deleted ones),
+   * and if found, REVIVE it (clear deleted_at, reset to a fresh in-progress
+   * shift). Only insert a new row when none exists at all. */
+  let revived = null, lookupErr = null;
+  {
+    const res = await sb.from('time_entries')
+      .select('*')
+      .eq('user_id', u.id)
+      .eq('work_date', t)
+      .limit(1)
+      .maybeSingle();
+    lookupErr = res.error;
+    revived = res.data;
+  }
+
+  if (lookupErr) {
+    toast('Clock-in failed: ' + lookupErr.message);
+    btn.disabled = false;
+    btn.textContent = 'Clock in';
+    return;
+  }
+
+  if (revived) {
+    /* If a live (non-deleted) completed row somehow slipped past the cache
+     * guard above, don't overwrite real worked time. */
+    if (!revived.deleted_at && revived.status === 'completed') {
+      toast('You already have a complete entry for today. File a COA request if there is a mistake.');
+      btn.disabled = false;
+      btn.textContent = 'Clock in';
+      return;
+    }
+    const { data, error } = await sb.from('time_entries')
+      .update({
+        clock_in: nowTs,
+        clock_out: null,
+        lunch_start: null,
+        lunch_end: null,
+        lunch_over_reason: null,
+        coa_id: null,
+        status: 'in-progress',
+        deleted_at: null
+      })
+      .eq('id', revived.id)
+      .select().single();
+    if (error) {
+      toast('Clock-in failed: ' + error.message);
+      btn.disabled = false;
+      btn.textContent = 'Clock in';
+      return;
+    }
+    /* Sync the cache: replace any stale copy, or add the revived row. */
+    D.entries = D.entries.filter(e => e.id !== data.id);
+    D.entries.push(entryFromRow(data));
+    toast('Clocked in at ' + fmtTime(data.clock_in));
+    renderEmployee();
+    btn.disabled = false;
+    return;
+  }
+
   const { data, error } = await sb.from('time_entries').insert({
     user_id: u.id,
-    work_date: today(),
-    clock_in: nowISO(),
+    work_date: t,
+    clock_in: nowTs,
     status: 'in-progress'
   }).select().single();
 
