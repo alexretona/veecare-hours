@@ -585,7 +585,7 @@
         Sign in with your work email and password. New team members can
         create an account, which the owner reviews and activates.
       </div>
-      <div style="text-align:right; margin-top:16px; font-size:9px; color:var(--ink-muted); letter-spacing:0.08em; text-transform:uppercase;">v0.3</div>
+      <div style="text-align:right; margin-top:16px; font-size:9px; color:var(--ink-muted); letter-spacing:0.08em; text-transform:uppercase;">v0.4</div>
     </div>
 
     <div id="signup-panel" style="display:none;">
@@ -1660,9 +1660,32 @@ function todaysEntry(userId) {
   return D.entries.find(e => e.userId === userId && e.date === t);
 }
 
+/* ============== ACTIVE SHIFT (night-shift safe) ==============
+ * An employee's CURRENTLY OPEN shift is any entry still 'in-progress',
+ * regardless of which calendar date it was opened on. This is what makes
+ * overnight shifts work: a shift started at 8pm June 1 stays the active
+ * shift past midnight, so the employee can still clock out at 4am June 2
+ * and the dashboard keeps showing it instead of "resetting".
+ *
+ * Worked-hours and lunch math already use absolute UTC timestamps, so an
+ * 8pm→4am span correctly yields 8 hours and lunch that spans midnight is
+ * counted correctly — the only thing that was broken was *finding* the
+ * open shift after the PH calendar date rolled over. This fixes that.
+ *
+ * If somehow more than one entry is in-progress (shouldn't happen), we take
+ * the one with the most recent clock_in so the live shift wins. */
+function activeEntry(userId) {
+  const open = D.entries.filter(e => e.userId === userId && e.status === 'in-progress');
+  if (open.length === 0) return null;
+  open.sort((a, b) => new Date(b.clockIn) - new Date(a.clockIn));
+  return open[0];
+}
+
 function updateClockStatus() {
   const u = currentUser();
-  const entry = todaysEntry(u.id);
+  /* Night-shift safe: the open shift (any date) takes priority. Only if there's
+   * no open shift do we look at whether today already has a completed entry. */
+  const entry = activeEntry(u.id) || todaysEntry(u.id);
   const status = document.getElementById('clock-status');
   const inBtn = document.getElementById('clock-in-btn');
   const outBtn = document.getElementById('clock-out-btn');
@@ -1713,7 +1736,10 @@ function updateClockStatus() {
     /* State C: On lunch */
     const mins = (Date.now() - new Date(entry.lunchStart).getTime()) / 60000;
     const over = mins > LUNCH_LIMIT_MIN;
-    status.textContent = `On lunch break since ${fmtTime(entry.lunchStart)}`;
+    const lunchStartedToday = (phYmd(new Date(entry.lunchStart)) === today());
+    status.textContent = lunchStartedToday
+      ? `On lunch break since ${fmtTime(entry.lunchStart)}`
+      : `On lunch break since ${fmtTime(entry.lunchStart)} (overnight shift)`;
     status.classList.add('in'); status.classList.remove('out');
     lunchEndBtn.style.display = 'inline-block';
     lunchTimer.style.display = 'block';
@@ -1725,7 +1751,13 @@ function updateClockStatus() {
   }
 
   /* State B: Clocked in, no current lunch */
-  status.textContent = 'Clocked in since ' + fmtTime(entry.clockIn);
+  {
+    const startedToday = (entry.date === today());
+    const sinceTxt = startedToday
+      ? `Clocked in since ${fmtTime(entry.clockIn)}`
+      : `Clocked in since ${fmtTime(entry.clockIn)} on ${fmtDate(entry.date)} (overnight shift)`;
+    status.textContent = sinceTxt;
+  }
   status.classList.add('in'); status.classList.remove('out');
   outBtn.style.display = 'inline-block';
 
@@ -1831,15 +1863,25 @@ function renderRecentEntries() {
 
 async function clockIn() {
   const u = currentUser();
-  const existing = todaysEntry(u.id);
-  if (existing) {
-    if (existing.status === 'in-progress') {
-      toast('You are already clocked in. Use Clock out to end your shift.');
-    } else {
-      toast('You already have a complete entry for today. File a COA request if there is a mistake.');
-    }
+
+  /* Night-shift safe: if there's an open shift from ANY date (e.g. started
+   * last night and still running), don't start a new one — they should clock
+   * out of the existing shift first. */
+  const open = activeEntry(u.id);
+  if (open) {
+    toast('You are already clocked in. Use Clock out to end your shift.');
     return;
   }
+
+  /* Guard against a second entry on the same calendar date. The shift is keyed
+   * to the date it STARTS on (standard night-shift convention), so a completed
+   * entry today means they've already worked a shift that started today. */
+  const existing = todaysEntry(u.id);
+  if (existing && existing.status === 'completed') {
+    toast('You already have a complete entry for today. File a COA request if there is a mistake.');
+    return;
+  }
+
   const btn = document.getElementById('clock-in-btn');
   btn.disabled = true;
   btn.textContent = 'Clocking in...';
@@ -1865,13 +1907,13 @@ async function clockIn() {
 
 async function startLunch() {
   const u = currentUser();
-  const entry = todaysEntry(u.id);
+  const entry = activeEntry(u.id);
   if (!entry || entry.status !== 'in-progress') {
     toast('You need to be clocked in to start a lunch break.');
     return;
   }
   if (entry.lunchStart) {
-    toast('You already took your lunch break for today.');
+    toast('You already took your lunch break for this shift.');
     return;
   }
   const btn = document.getElementById('lunch-start-btn');
@@ -1895,7 +1937,7 @@ async function startLunch() {
 
 async function endLunch() {
   const u = currentUser();
-  const entry = todaysEntry(u.id);
+  const entry = activeEntry(u.id);
   if (!entry || !entry.lunchStart || entry.lunchEnd) {
     toast('No active lunch break to end.');
     return;
@@ -1925,7 +1967,7 @@ async function endLunch() {
 
 async function clockOut() {
   const u = currentUser();
-  const entry = todaysEntry(u.id);
+  const entry = activeEntry(u.id);
   if (!entry || entry.status !== 'in-progress') {
     toast('Nothing to clock out of.');
     return;
@@ -1966,7 +2008,7 @@ function openLunchReasonModal() {
   document.getElementById('lunch-reason-modal').classList.add('active');
   document.getElementById('lunch-reason-text').value = '';
   const u = currentUser();
-  const entry = todaysEntry(u.id);
+  const entry = activeEntry(u.id);
   const mins = lunchMinutes(entry);
   document.getElementById('lunch-reason-info').textContent =
     `Your lunch break was ${fmtLunchDuration(mins)} — that's ${Math.round(mins - LUNCH_LIMIT_MIN)} minutes over the ${LUNCH_LIMIT_MIN}-minute limit. A reason is required before clocking out.`;
@@ -1981,7 +2023,7 @@ async function submitLunchReason() {
     return;
   }
   const u = currentUser();
-  const entry = todaysEntry(u.id);
+  const entry = activeEntry(u.id);
   const { error } = await sb.from('time_entries').update({ lunch_over_reason: reason }).eq('id', entry.id);
   if (error) { toast('Could not save reason: ' + error.message); return; }
   entry.lunchOverReason = reason;
@@ -2941,7 +2983,7 @@ function tickClock() {
       if (u && u.role === 'employee') {
         const empApp = document.getElementById('emp-app');
         if (empApp && empApp.classList.contains('active')) {
-          const entry = todaysEntry(u.id);
+          const entry = activeEntry(u.id);
           if (entry && entry.lunchStart && !entry.lunchEnd) {
             updateClockStatus();
           }
