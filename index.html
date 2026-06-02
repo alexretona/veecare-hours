@@ -585,7 +585,7 @@
         Sign in with your work email and password. New team members can
         create an account, which the owner reviews and activates.
       </div>
-      <div style="text-align:right; margin-top:16px; font-size:9px; color:var(--ink-muted); letter-spacing:0.08em; text-transform:uppercase;">v0.4</div>
+      <div style="text-align:right; margin-top:16px; font-size:9px; color:var(--ink-muted); letter-spacing:0.08em; text-transform:uppercase;">v0.5</div>
     </div>
 
     <div id="signup-panel" style="display:none;">
@@ -777,7 +777,7 @@
           <div class="panel-title">My COA requests</div>
         </div>
         <table>
-          <thead><tr><th>Date</th><th>Requested clock in</th><th>Requested clock out</th><th>Reason</th><th>Status</th></tr></thead>
+          <thead><tr><th>Date</th><th>Requested clock in</th><th>Requested clock out</th><th>Lunch</th><th>Reason</th><th>Status</th></tr></thead>
           <tbody id="coa-rows"></tbody>
         </table>
       </div>
@@ -957,7 +957,7 @@
 
       <div class="panel">
         <table>
-          <thead><tr><th>Employee</th><th>Date</th><th>Clock in</th><th>Clock out</th><th>Reason</th><th></th></tr></thead>
+          <thead><tr><th>Employee</th><th>Date</th><th>Clock in</th><th>Clock out</th><th>Lunch</th><th>Reason</th><th></th></tr></thead>
           <tbody id="coa-approvals-rows"></tbody>
         </table>
       </div>
@@ -972,7 +972,7 @@
           </select>
         </div>
         <table>
-          <thead><tr><th>Employee</th><th>Date</th><th>Clock in</th><th>Clock out</th><th>Reason</th><th>Status</th><th>Decided</th></tr></thead>
+          <thead><tr><th>Employee</th><th>Date</th><th>Clock in</th><th>Clock out</th><th>Lunch</th><th>Reason</th><th>Status</th><th>Decided</th></tr></thead>
           <tbody id="coa-history-rows"></tbody>
         </table>
       </div>
@@ -1072,6 +1072,33 @@
           <label>Clock out (PH time)</label>
           <input type="time" id="coa-out">
         </div>
+      </div>
+      <div class="field" style="margin-top:-4px;">
+        <label style="display:flex; align-items:center; gap:8px; font-weight:normal; cursor:pointer;">
+          <input type="checkbox" id="coa-overnight" style="width:auto; margin:0;" onchange="updateCoaLunchHint()">
+          <span>Overnight shift &mdash; clock-out is on the <strong>next day</strong></span>
+        </label>
+      </div>
+      <div class="field">
+        <label style="display:flex; align-items:center; gap:8px; font-weight:normal; cursor:pointer;">
+          <input type="checkbox" id="coa-has-lunch" style="width:auto; margin:0;" onchange="toggleCoaLunchFields()">
+          <span>I took a lunch break during this shift</span>
+        </label>
+      </div>
+      <div id="coa-lunch-fields" style="display:none;">
+        <div class="row-2">
+          <div class="field">
+            <label>Lunch start (PH time)</label>
+            <input type="time" id="coa-lunch-in">
+          </div>
+          <div class="field">
+            <label>Lunch end (PH time)</label>
+            <input type="time" id="coa-lunch-out">
+          </div>
+        </div>
+        <p id="coa-lunch-hint" style="font-size:11px; color:var(--ink-muted); margin:-8px 0 12px;">
+          Lunch time is excluded from worked hours. For an overnight shift, a lunch that crosses midnight is handled automatically.
+        </p>
       </div>
       <div class="field">
         <label>Reason for correction</label>
@@ -1230,6 +1257,8 @@ function coaFromRow(r) {
     date: r.work_date,
     clockIn: r.clock_in,
     clockOut: r.clock_out,
+    lunchStart: r.lunch_start || undefined,
+    lunchEnd: r.lunch_end || undefined,
     reason: r.reason || '',
     status: r.status,
     decidedAt: r.decided_at || undefined,
@@ -2211,18 +2240,32 @@ function eligibleCoaDates() {
   return dates;
 }
 
+/* Formats the clock-out cell, appending "(+1)" if the COA spans midnight. */
+function coaClockOutLabel(c) {
+  const inDay = phYmd(new Date(c.clockIn));
+  const outDay = phYmd(new Date(c.clockOut));
+  return outDay !== inDay ? `${fmtTime(c.clockOut)} (+1)` : fmtTime(c.clockOut);
+}
+/* Short lunch summary for a COA, e.g. "12:00 PM–1:00 PM (60m)" or "—". */
+function coaLunchLabel(c) {
+  if (!c.lunchStart || !c.lunchEnd) return '—';
+  const mins = Math.round((new Date(c.lunchEnd) - new Date(c.lunchStart)) / 60000);
+  return `${fmtTime(c.lunchStart)}–${fmtTime(c.lunchEnd)} (${mins}m)`;
+}
+
 function renderCoa() {
   const u = currentUser();
   const coas = D.coas.filter(c => c.userId===u.id).slice().sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
   const tbody = document.getElementById('coa-rows');
   if (coas.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" class="empty">No COA requests yet.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="empty">No COA requests yet.</td></tr>';
     return;
   }
   tbody.innerHTML = coas.map(c => `<tr>
     <td>${fmtDate(c.date)}</td>
     <td class="mono">${fmtTime(c.clockIn)}</td>
-    <td class="mono">${fmtTime(c.clockOut)}</td>
+    <td class="mono">${coaClockOutLabel(c)}</td>
+    <td class="mono">${coaLunchLabel(c)}</td>
     <td>${c.reason||'—'}</td>
     <td><span class="badge ${c.status}">${c.status}</span></td>
   </tr>`).join('');
@@ -2239,26 +2282,91 @@ function openCoaModal() {
   document.getElementById('coa-in').value = '08:00';
   document.getElementById('coa-out').value = '17:00';
   document.getElementById('coa-reason').value = '';
+  document.getElementById('coa-overnight').checked = false;
+  document.getElementById('coa-has-lunch').checked = false;
+  document.getElementById('coa-lunch-in').value = '12:00';
+  document.getElementById('coa-lunch-out').value = '13:00';
+  document.getElementById('coa-lunch-fields').style.display = 'none';
   document.getElementById('coa-modal').classList.add('active');
 }
 function closeCoaModal() { document.getElementById('coa-modal').classList.remove('active'); }
+
+/* Show/hide the lunch time inputs based on the "I took a lunch break" checkbox. */
+function toggleCoaLunchFields() {
+  const on = document.getElementById('coa-has-lunch').checked;
+  document.getElementById('coa-lunch-fields').style.display = on ? 'block' : 'none';
+}
+/* Adjust the lunch helper text depending on whether this is an overnight shift. */
+function updateCoaLunchHint() {
+  const overnight = document.getElementById('coa-overnight').checked;
+  const hint = document.getElementById('coa-lunch-hint');
+  if (!hint) return;
+  hint.textContent = overnight
+    ? 'Overnight shift: if your lunch was after midnight (e.g. 12:30 AM), tick stays correct — the app figures out the date automatically.'
+    : 'Lunch time is excluded from worked hours.';
+}
 
 async function submitCoa() {
   const u = currentUser();
   const date = document.getElementById('coa-date').value;
   const inTime = document.getElementById('coa-in').value;
   const outTime = document.getElementById('coa-out').value;
+  const overnight = document.getElementById('coa-overnight').checked;
+  const hasLunch = document.getElementById('coa-has-lunch').checked;
   const reason = document.getElementById('coa-reason').value.trim();
+
   if (!date) { toast('No date selected'); return; }
   if (!inTime || !outTime) { toast('Both clock-in and clock-out times required'); return; }
-  if (outTime <= inTime) { toast('Clock-out must be after clock-in'); return; }
   if (!reason) { toast('Please provide a reason'); return; }
+
+  /* Clock-in is always on the selected date. Clock-out is on the next day when
+   * the shift is marked overnight; otherwise same day. */
+  const outDate = overnight ? addDays(date, 1) : date;
+  const clockInISO = phDateTimeToUTC(date, inTime);
+  const clockOutISO = phDateTimeToUTC(outDate, outTime);
+
+  /* Validate ordering using absolute timestamps (works across midnight). */
+  if (new Date(clockOutISO) <= new Date(clockInISO)) {
+    toast(overnight
+      ? 'Clock-out must be after clock-in. Check your times.'
+      : 'Clock-out must be after clock-in. If this was an overnight shift, tick the overnight box.');
+    return;
+  }
+
+  /* Lunch (optional). For an overnight shift we decide each lunch timestamp's
+   * date: if the lunch time-of-day falls before the clock-in time-of-day, it
+   * must be after midnight, so it belongs to the next day. */
+  let lunchInISO = null, lunchOutISO = null;
+  if (hasLunch) {
+    const lunchIn = document.getElementById('coa-lunch-in').value;
+    const lunchOut = document.getElementById('coa-lunch-out').value;
+    if (!lunchIn || !lunchOut) { toast('Enter both lunch start and lunch end, or untick the lunch box.'); return; }
+
+    const lunchInDate  = (overnight && lunchIn  < inTime) ? addDays(date, 1) : date;
+    /* lunch end is next-day if overnight AND (its time is before clock-in time, OR it's before its own start, i.e. lunch itself crosses midnight) */
+    let lunchOutDate;
+    if (overnight && lunchOut < inTime) lunchOutDate = addDays(date, 1);
+    else if (lunchOut < lunchIn)        lunchOutDate = addDays(lunchInDate, 1);
+    else                                lunchOutDate = lunchInDate;
+
+    lunchInISO  = phDateTimeToUTC(lunchInDate,  lunchIn);
+    lunchOutISO = phDateTimeToUTC(lunchOutDate, lunchOut);
+
+    if (new Date(lunchOutISO) <= new Date(lunchInISO)) { toast('Lunch end must be after lunch start.'); return; }
+    /* Lunch must sit within the shift */
+    if (new Date(lunchInISO) < new Date(clockInISO) || new Date(lunchOutISO) > new Date(clockOutISO)) {
+      toast('Lunch break must fall between your clock-in and clock-out times.');
+      return;
+    }
+  }
 
   const { data, error } = await sb.from('coa_requests').insert({
     user_id: u.id,
     work_date: date,
-    clock_in: phDateTimeToUTC(date, inTime),
-    clock_out: phDateTimeToUTC(date, outTime),
+    clock_in: clockInISO,
+    clock_out: clockOutISO,
+    lunch_start: lunchInISO,
+    lunch_end: lunchOutISO,
     reason,
     status: 'pending'
   }).select().single();
@@ -2797,14 +2905,15 @@ function renderLeaveHistory() {
 function renderCoaApprovals() {
   const pending = D.coas.filter(c => c.status==='pending').slice().sort((a,b)=>a.date.localeCompare(b.date));
   const tbody = document.getElementById('coa-approvals-rows');
-  if (pending.length === 0) { tbody.innerHTML = '<tr><td colspan="6" class="empty">No pending COA requests.</td></tr>'; return; }
+  if (pending.length === 0) { tbody.innerHTML = '<tr><td colspan="7" class="empty">No pending COA requests.</td></tr>'; return; }
   tbody.innerHTML = pending.map(c => {
     const u = D.users.find(x => x.id===c.userId);
     return `<tr>
       <td>${u.name}</td>
       <td>${fmtDate(c.date)}</td>
       <td class="mono">${fmtTime(c.clockIn)}</td>
-      <td class="mono">${fmtTime(c.clockOut)}</td>
+      <td class="mono">${coaClockOutLabel(c)}</td>
+      <td class="mono">${coaLunchLabel(c)}</td>
       <td>${c.reason||'—'}</td>
       <td><div class="actions-cell">
         <button class="btn btn-sm" onclick="approveCoa('${c.id}')">Approve</button>
@@ -2833,12 +2942,14 @@ async function approveCoa(id) {
   let entry = D.entries.find(e => e.userId===c.userId && e.date===c.date);
   if (entry) {
     const { error: uErr } = await sb.from('time_entries')
-      .update({ clock_in: c.clockIn, clock_out: c.clockOut, status: 'completed', coa_id: c.id })
+      .update({ clock_in: c.clockIn, clock_out: c.clockOut, lunch_start: c.lunchStart || null, lunch_end: c.lunchEnd || null, status: 'completed', coa_id: c.id })
       .eq('id', entry.id);
     if (uErr) { toast('COA marked approved, but entry update failed: ' + uErr.message); }
     else {
       entry.clockIn = c.clockIn;
       entry.clockOut = c.clockOut;
+      entry.lunchStart = c.lunchStart || undefined;
+      entry.lunchEnd = c.lunchEnd || undefined;
       entry.status = 'completed';
       entry.coaId = c.id;
     }
@@ -2848,6 +2959,8 @@ async function approveCoa(id) {
       work_date: c.date,
       clock_in: c.clockIn,
       clock_out: c.clockOut,
+      lunch_start: c.lunchStart || null,
+      lunch_end: c.lunchEnd || null,
       status: 'completed',
       coa_id: c.id
     }).select().single();
@@ -2893,7 +3006,7 @@ function renderCoaHistory() {
   if (filter !== 'all') decided = decided.filter(c => c.status === filter);
   decided.sort((a, b) => (b.decidedAt || b.createdAt || '').localeCompare(a.decidedAt || a.createdAt || ''));
   if (decided.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" class="empty">No decided COA requests yet.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="empty">No decided COA requests yet.</td></tr>';
     return;
   }
   tbody.innerHTML = decided.map(c => {
@@ -2904,7 +3017,8 @@ function renderCoaHistory() {
       <td>${u.name}</td>
       <td>${fmtDate(c.date)}</td>
       <td class="mono">${fmtTime(c.clockIn)}</td>
-      <td class="mono">${fmtTime(c.clockOut)}</td>
+      <td class="mono">${coaClockOutLabel(c)}</td>
+      <td class="mono">${coaLunchLabel(c)}</td>
       <td>${c.reason || '—'}</td>
       <td><span class="badge ${c.status}">${c.status}</span></td>
       <td style="font-size:11px; color:var(--ink-soft);">${decidedDate}<br><span style="color:var(--ink-muted);">by ${decider}</span></td>
