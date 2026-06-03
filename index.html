@@ -585,7 +585,7 @@
         Sign in with your work email and password. New team members can
         create an account, which the owner reviews and activates.
       </div>
-      <div style="text-align:right; margin-top:16px; font-size:9px; color:var(--ink-muted); letter-spacing:0.08em; text-transform:uppercase;">v0.9</div>
+      <div style="text-align:right; margin-top:16px; font-size:9px; color:var(--ink-muted); letter-spacing:0.08em; text-transform:uppercase;">v1.0</div>
     </div>
 
     <div id="signup-panel" style="display:none;">
@@ -1219,7 +1219,8 @@ function profileFromRow(r) {
     employmentStatus: r.employment_status,
     leavesEnabled: !!r.leaves_enabled,
     vlBalance: r.vl_balance ?? 0,
-    slBalance: r.sl_balance ?? 0
+    slBalance: r.sl_balance ?? 0,
+    timezone: r.timezone || null     /* IANA zone, e.g. "America/New_York"; null = treat as PHT */
   };
 }
 function entryFromRow(r) {
@@ -1292,14 +1293,65 @@ async function hydrate() {
 /* The in-memory cache. session holds the logged-in user's UUID. */
 let D = { users: [], entries: [], leaves: [], coas: [], session: null };
 
-/* ============== PH TIMEZONE UTILITIES ==============
- * All clock-in/out timestamps are stored as UTC ISO strings.
- * "today", date strings, day-of-week, and display formatting use Asia/Manila (UTC+8).
- * PH does NOT observe DST, so a fixed +8 offset is correct year-round.
+/* ============== TIMEZONE UTILITIES ==============
+ * All clock-in/out timestamps are stored as UTC ISO strings (timezone-correct).
+ * Display, "today", date strings, and day-of-week are rendered in a TARGET
+ * timezone. By default that's the current user's own auto-detected browser zone
+ * (ACTIVE_TZ), so a Manila employee sees PHT and an EST employee sees EST —
+ * including their own local day boundary. The admin can render any single row
+ * in a specific employee's zone by passing an explicit `tz` to the formatters.
+ *
+ * Stored UTC never changes, so switching zones is purely a display concern —
+ * no data migration. IANA zones (e.g. "Asia/Manila", "America/New_York") handle
+ * DST automatically via Intl, so EST<->EDT transitions are correct year-round.
  */
-const PH_OFFSET_MIN = 8 * 60;
+const DEFAULT_TZ = 'Asia/Manila';
+
+/* The browser's detected IANA timezone, e.g. "America/New_York". Falls back to
+ * Manila if the browser doesn't report one. */
+function detectBrowserTz() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || DEFAULT_TZ;
+  } catch (e) {
+    return DEFAULT_TZ;
+  }
+}
+
+/* ACTIVE_TZ is the zone used for all default display + day math. It's set on
+ * login/boot to the logged-in user's browser zone. */
+let ACTIVE_TZ = detectBrowserTz();
+
+/* A short label for a zone, e.g. "PHT", "EST", "EDT", or a city fallback. */
+function tzLabel(tz) {
+  const z = tz || ACTIVE_TZ;
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone: z, timeZoneName: 'short' })
+      .formatToParts(new Date());
+    const name = (parts.find(p => p.type === 'timeZoneName') || {}).value;
+    if (name === 'GMT+8' && z === 'Asia/Manila') return 'PHT';
+    return name || z.split('/').pop().replace(/_/g, ' ');
+  } catch (e) {
+    return z.split('/').pop().replace(/_/g, ' ');
+  }
+}
 
 function nowISO() { return new Date().toISOString(); }
+
+/* The offset (in minutes) of a given IANA zone at a given instant, DST-aware.
+ * Positive = ahead of UTC (Manila +480), negative = behind (New York -300/-240). */
+function tzOffsetMinutes(tz, date) {
+  const d = date || new Date();
+  /* Format the instant as if it were a wall clock in the target zone, parse that
+   * back as UTC, and the difference is the zone's offset at that instant. */
+  const s = d.toLocaleString('en-US', { timeZone: tz, hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  /* s looks like "06/02/2025, 14:30:00" */
+  const m = s.match(/(\d{2})\/(\d{2})\/(\d{4}),?\s+(\d{2}):(\d{2}):(\d{2})/);
+  if (!m) return 0;
+  const asUTC = Date.UTC(+m[3], +m[1]-1, +m[2], +m[4], +m[5], +m[6]);
+  return Math.round((asUTC - d.getTime()) / 60000);
+}
 
 /* ============== DEVICE DETECTION ==============
  * Employees: desktop/laptop only (no mobile/tablet).
@@ -1321,67 +1373,78 @@ function showMobileBlocked() {
   document.getElementById('mobile-blocked').style.display = 'flex';
 }
 
-/* Returns the YYYY-MM-DD date in PH for a given UTC Date (default: now) */
-function phYmd(date) {
+/* Returns the YYYY-MM-DD calendar date in the given zone for a UTC Date
+ * (defaults: now, ACTIVE_TZ). */
+function zoneYmd(date, tz) {
   const d = date || new Date();
-  const phMs = d.getTime() + PH_OFFSET_MIN*60*1000;
-  return new Date(phMs).toISOString().slice(0,10);
+  const z = tz || ACTIVE_TZ;
+  const off = tzOffsetMinutes(z, d);
+  return new Date(d.getTime() + off*60*1000).toISOString().slice(0,10);
 }
+/* Back-compat alias: existing call sites use phYmd(); now zone-aware. */
+function phYmd(date) { return zoneYmd(date, ACTIVE_TZ); }
 
-function today() { return phYmd(); }
+function today() { return zoneYmd(new Date(), ACTIVE_TZ); }
 
-/* Day of week in PH: 0=Sun..6=Sat */
+/* Day of week (0=Sun..6=Sat) for a YYYY-MM-DD interpreted in ACTIVE_TZ. */
 function phDayOfWeek(dateStr) {
-  /* dateStr is YYYY-MM-DD in PH; treat midnight in PH = (T-8h) UTC */
-  const utcMs = Date.parse(dateStr + 'T00:00:00+08:00');
-  const phMs = utcMs + PH_OFFSET_MIN*60*1000;
-  return new Date(phMs).getUTCDay();
+  /* Noon in the active zone avoids any midnight/DST edge; weekday is stable. */
+  const off = tzOffsetMinutes(ACTIVE_TZ, new Date(dateStr + 'T12:00:00Z'));
+  const utcMs = Date.parse(dateStr + 'T12:00:00Z') - off*60*1000;
+  return new Date(utcMs + off*60*1000).getUTCDay();
 }
 
-/* Combine a PH date string and HH:MM time string into a UTC ISO timestamp */
+/* Combine a date string (YYYY-MM-DD) and HH:MM time, interpreted in ACTIVE_TZ,
+ * into a UTC ISO timestamp. Used by the COA form where the user types wall-clock
+ * times in their own zone. */
 function phDateTimeToUTC(dateStr, timeStr) {
-  /* Build an ISO string with explicit +08:00 offset, then Date parses to UTC */
-  return new Date(dateStr + 'T' + timeStr + ':00+08:00').toISOString();
+  /* First approximate the offset at that local date, then build the UTC instant.
+   * Two-step to be correct around DST boundaries. */
+  const approx = new Date(dateStr + 'T' + timeStr + ':00Z');
+  const off = tzOffsetMinutes(ACTIVE_TZ, approx);
+  return new Date(Date.parse(dateStr + 'T' + timeStr + ':00Z') - off*60*1000).toISOString();
 }
 
-/* Add n days to a YYYY-MM-DD string, return YYYY-MM-DD */
+/* Add n days to a YYYY-MM-DD string, return YYYY-MM-DD (zone-agnostic). */
 function addDays(dateStr, n) {
-  const utcMs = Date.parse(dateStr + 'T12:00:00+08:00');  /* noon PH avoids DST edges, irrelevant here but safe */
-  const newMs = utcMs + n*86400*1000;
-  return phYmd(new Date(newMs));
+  const ms = Date.parse(dateStr + 'T12:00:00Z') + n*86400*1000;
+  return new Date(ms).toISOString().slice(0,10);
 }
 
-/* Format a UTC ISO timestamp as PH wall-clock time (e.g. "8:15 AM") */
-function fmtTime(iso) {
+/* Format a UTC ISO timestamp as wall-clock time (e.g. "8:15 AM") in the given
+ * zone (defaults to ACTIVE_TZ). */
+function fmtTime(iso, tz) {
   if (!iso) return '—';
   return new Date(iso).toLocaleTimeString('en-US', {
-    hour: 'numeric', minute: '2-digit', timeZone: 'Asia/Manila'
+    hour: 'numeric', minute: '2-digit', timeZone: tz || ACTIVE_TZ
   });
 }
 
-/* Format a clock-out time, appending "(+1)" when it lands on a later PH day
- * than the clock-in (i.e. an overnight shift that crossed midnight). Used by
- * the employee timesheet, the admin timesheet, and the COA views. */
-function clockOutLabel(clockInIso, clockOutIso) {
+/* Format a clock-out time, appending "(+1)" when it lands on a later day than
+ * the clock-in IN THE SAME ZONE (overnight shift crossing midnight). */
+function clockOutLabel(clockInIso, clockOutIso, tz) {
   if (!clockOutIso) return '—';
-  const overnight = phYmd(new Date(clockInIso)) !== phYmd(new Date(clockOutIso));
-  return overnight ? `${fmtTime(clockOutIso)} (+1)` : fmtTime(clockOutIso);
+  const z = tz || ACTIVE_TZ;
+  const overnight = zoneYmd(new Date(clockInIso), z) !== zoneYmd(new Date(clockOutIso), z);
+  return overnight ? `${fmtTime(clockOutIso, z)} (+1)` : fmtTime(clockOutIso, z);
 }
 
-/* Format a PH date string as "Mon, Jan 5" */
-function fmtDate(dateStr) {
+/* Format a date string as "Mon, Jan 5" (rendered in the given zone). */
+function fmtDate(dateStr, tz) {
   if (!dateStr) return '—';
-  /* Build a UTC ms that represents noon PH on that date, then format */
-  const utcMs = Date.parse(dateStr + 'T12:00:00+08:00');
+  const z = tz || ACTIVE_TZ;
+  /* Noon UTC on that date renders to the same calendar day in any common zone. */
+  const utcMs = Date.parse(dateStr + 'T12:00:00Z');
   return new Date(utcMs).toLocaleDateString('en-US', {
-    weekday: 'short', month: 'short', day: 'numeric', timeZone: 'Asia/Manila'
+    weekday: 'short', month: 'short', day: 'numeric', timeZone: z
   });
 }
 
-function fmtFullDate(dateStr) {
-  const utcMs = Date.parse(dateStr + 'T12:00:00+08:00');
+function fmtFullDate(dateStr, tz) {
+  const z = tz || ACTIVE_TZ;
+  const utcMs = Date.parse(dateStr + 'T12:00:00Z');
   return new Date(utcMs).toLocaleDateString('en-US', {
-    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila'
+    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: z
   });
 }
 
@@ -1553,7 +1616,9 @@ async function handleLogin() {
     return;
   }
   if (btn) { btn.disabled = false; btn.textContent = 'Sign in'; }
-  routeToApp(profileFromRow(prof));
+  const loggedInUser = profileFromRow(prof);
+  await applyUserTimezone(loggedInUser);
+  routeToApp(loggedInUser);
 }
 
 async function handleSignup() {
@@ -1638,6 +1703,29 @@ async function logout() {
   document.getElementById('login-pass').value = '';
 }
 
+/* Set the active display zone from the browser, and persist it to the user's
+ * profile when it differs from what's stored. Admins keep their OWN browser
+ * zone as ACTIVE_TZ (so they read times in their local zone by default), but
+ * we don't overwrite an admin's stored zone with anything meaningful — the
+ * admin timesheet renders each employee row in that employee's stored zone.
+ * For employees, the detected zone IS their working zone, so we store it. */
+async function applyUserTimezone(user) {
+  const detected = detectBrowserTz();
+  ACTIVE_TZ = detected;
+  /* Persist for employees when changed/empty, so the admin can render their
+   * rows in the right zone. Best-effort: a failure here never blocks login. */
+  if (user && user.role === 'employee' && user.timezone !== detected) {
+    try {
+      const { error } = await sb.from('profiles').update({ timezone: detected }).eq('id', user.id);
+      if (!error) {
+        user.timezone = detected;
+        const cached = D.users.find(x => x.id === user.id);
+        if (cached) cached.timezone = detected;
+      }
+    } catch (e) { /* ignore — display still works via ACTIVE_TZ */ }
+  }
+}
+
 function routeToApp(user) {
   document.getElementById('login-view').style.display='none';
   if (user.role === 'admin') {
@@ -1664,11 +1752,11 @@ function renderEmployee() {
   const u = currentUser();
   document.getElementById('emp-name').textContent = u.name.split(' ')[0];
   document.getElementById('emp-avatar').textContent = u.name[0].toUpperCase();
-  /* PH-local hour for greeting */
-  const phHour = parseInt(new Date().toLocaleString('en-US', {hour:'numeric', hour12:false, timeZone:'Asia/Manila'}), 10);
-  const greet = phHour<12?'Good morning':phHour<18?'Good afternoon':'Good evening';
+  /* Local hour (in the user's own zone) for the greeting */
+  const localHour = parseInt(new Date().toLocaleString('en-US', {hour:'numeric', hour12:false, timeZone: ACTIVE_TZ}), 10);
+  const greet = localHour<12?'Good morning':localHour<18?'Good afternoon':'Good evening';
   document.getElementById('greeting').textContent = `${greet}, ${u.name.split(' ')[0]}.`;
-  document.getElementById('today-date').textContent = fmtFullDate(today()) + ' · Manila time';
+  document.getElementById('today-date').textContent = fmtFullDate(today()) + ' · ' + tzLabel(ACTIVE_TZ);
 
   updateClockStatus();
   renderStats();
@@ -2808,11 +2896,14 @@ function renderAdminTimesheets() {
     }
     /* Over-lunch row background subtle red so it pops in the table */
     const rowBg = isLunchOver(e) ? ' style="background:#FFF8F6;"' : '';
+    /* Render this employee's times in THAT employee's own zone, with a tag. */
+    const ez = r.user.timezone || DEFAULT_TZ;
+    const zoneTag = ` <span style="font-size:9px;color:var(--ink-muted);letter-spacing:0.04em;">${tzLabel(ez)}</span>`;
     return `<tr${rowBg}>
       <td>${r.user.name}</td>
-      <td>${fmtDate(e.date)}</td>
-      <td class="mono">${fmtTime(e.clockIn)}</td>
-      <td class="mono">${clockOutLabel(e.clockIn, e.clockOut)}</td>
+      <td>${fmtDate(e.date, ez)}</td>
+      <td class="mono">${fmtTime(e.clockIn, ez)}${zoneTag}</td>
+      <td class="mono">${clockOutLabel(e.clockIn, e.clockOut, ez)}</td>
       <td class="mono">${hoursCell}</td>
       <td><button class="btn btn-danger btn-sm" onclick="confirmDeleteEntry('${e.id}')">Delete</button></td>
     </tr>`;
@@ -2884,24 +2975,26 @@ function exportTimesheetCSV() {
   const total = entries.reduce((s,e)=>s+workedHours(e),0);
   const rows = [
     ['VeeCare Staffing Solutions PH — Timesheet Export'],
-    ['Period', `${p.start} to ${p.end} (Asia/Manila)`],
+    ['Period', `${p.start} to ${p.end}`],
     ['Employee filter', empLabel],
-    ['Generated', new Date().toLocaleString('en-US', {timeZone:'Asia/Manila'}) + ' PHT'],
+    ['Generated', new Date().toLocaleString('en-US', {timeZone: ACTIVE_TZ}) + ' ' + tzLabel(ACTIVE_TZ)],
+    ['Note', 'Clock times shown in each employee\u2019s own timezone (see Zone column)'],
     [],
-    ['Employee', 'Date', 'Clock In (PHT)', 'Clock Out (PHT)', 'Worked Hours', 'Lunch (min)', 'Over Lunch?', 'Over-Lunch Reason']
+    ['Employee', 'Zone', 'Date', 'Clock In', 'Clock Out', 'Worked Hours', 'Lunch (min)', 'Over Lunch?', 'Over-Lunch Reason']
   ];
   entries.forEach(e => {
-    const u = D.users.find(x => x.id===e.userId);
+    const u = D.users.find(x => x.id===e.userId) || {};
+    const z = u.timezone || DEFAULT_TZ;
     const lmins = lunchMinutes(e);
     rows.push([
-      u.name, e.date, fmtTime(e.clockIn), fmtTime(e.clockOut),
+      u.name, tzLabel(z), e.date, fmtTime(e.clockIn, z), fmtTime(e.clockOut, z),
       round2(workedHours(e)),
       lmins > 0 ? Math.round(lmins) : '',
       isLunchOver(e) ? 'YES' : '',
       e.lunchOverReason || ''
     ]);
   });
-  rows.push([], ['Total', '', '', '', round2(total), '', '', '']);
+  rows.push([], ['Total', '', '', '', '', round2(total), '', '', '']);
   const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
   const blob = new Blob([csv], {type:'text/csv'});
   const url = URL.createObjectURL(blob);
@@ -3176,8 +3269,8 @@ function exportPayrollCSV() {
   const p = periodRange(period);
   const rows = [
     ['VeeCare Staffing Solutions PH — Payroll Export'],
-    ['Period', `${p.start} to ${p.end} (Asia/Manila)`],
-    ['Generated', new Date().toLocaleString('en-US', {timeZone:'Asia/Manila'}) + ' PHT'],
+    ['Period', `${p.start} to ${p.end}`],
+    ['Generated', new Date().toLocaleString('en-US', {timeZone: ACTIVE_TZ}) + ' ' + tzLabel(ACTIVE_TZ)],
     [],
     ['Employee', 'Username', 'Days Worked', 'Total Hours', 'Hourly Rate (PHP)', 'Gross Pay (PHP)']
   ];
@@ -3196,11 +3289,11 @@ function exportPayrollCSV() {
   toast('CSV downloaded');
 }
 
-/* ============== LIVE CLOCK (PH Time) ============== */
+/* ============== LIVE CLOCK (user's local zone) ============== */
 function tickClock() {
   const now = new Date();
-  const t = now.toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit', second:'2-digit', timeZone:'Asia/Manila'});
-  const d = now.toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric', timeZone:'Asia/Manila'}) + ' · PHT';
+  const t = now.toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit', second:'2-digit', timeZone: ACTIVE_TZ});
+  const d = now.toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric', timeZone: ACTIVE_TZ}) + ' · ' + tzLabel(ACTIVE_TZ);
   const lc = document.getElementById('live-clock'); if (lc) lc.textContent = t;
   const ld = document.getElementById('live-date'); if (ld) ld.textContent = d;
   /* Refresh lunch timer continuously while the employee app is active and a lunch is in progress */
@@ -3254,7 +3347,9 @@ setInterval(tickClock, 1000); tickClock();
     D.session = null;
     return;
   }
-  routeToApp(profileFromRow(prof));
+  const bootUser = profileFromRow(prof);
+  await applyUserTimezone(bootUser);
+  routeToApp(bootUser);
 })();
 </script>
 </body>
