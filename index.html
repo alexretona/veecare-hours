@@ -1057,11 +1057,12 @@
     </div>
     <div class="modal-body">
       <p style="font-size:12px; color:var(--ink-muted); margin-bottom:16px; padding:10px 12px; background:var(--paper); border-left:3px solid var(--vc-orange); border-radius:4px;">
-        File a COA only for past days where you forgot to clock in or clock out. Cannot be filed for days that already have a complete entry.
+        File a COA for a past day to set or correct your attendance times — whether you forgot to clock in/out or simply clocked in or out at the wrong time. Every request needs a reason and is subject to admin approval.
       </p>
       <div class="field">
         <label>Date of attendance</label>
-        <select id="coa-date"></select>
+        <select id="coa-date" onchange="prefillCoaForDate()"></select>
+        <p id="coa-type-note" style="font-size:11px; color:var(--ink-muted); margin-top:6px;"></p>
       </div>
       <div class="row-2">
         <div class="field">
@@ -1321,6 +1322,10 @@ function detectBrowserTz() {
  * login/boot to the logged-in user's browser zone. */
 let ACTIVE_TZ = detectBrowserTz();
 
+/* Earliest date a COA may be filed for. All attendance data starts June 1, 2026;
+ * nothing before this is eligible for a Certificate of Attendance. */
+const COA_MIN_DATE = '2026-06-01';
+
 /* A short label for a zone, e.g. "PHT", "EST", "EDT", or a city fallback. */
 function tzLabel(tz) {
   const z = tz || ACTIVE_TZ;
@@ -1418,6 +1423,17 @@ function fmtTime(iso, tz) {
   return new Date(iso).toLocaleTimeString('en-US', {
     hour: 'numeric', minute: '2-digit', timeZone: tz || ACTIVE_TZ
   });
+}
+
+/* Convert a UTC ISO timestamp to a 24-hour "HH:MM" string in the given zone
+ * (defaults to ACTIVE_TZ). Used to pre-fill the COA time inputs when correcting
+ * an existing entry. */
+function isoToZoneHHMM(iso, tz) {
+  if (!iso) return '';
+  const parts = new Date(iso).toLocaleTimeString('en-GB', {
+    hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz || ACTIVE_TZ
+  });
+  return parts.slice(0, 5);
 }
 
 /* Format a clock-out time, appending "(+1)" when it lands on a later day than
@@ -2390,10 +2406,16 @@ async function submitLeave() {
 /*
  * Eligible dates for a COA request (employee side):
  *  - Date is in the past (not today, not future)
- *  - Date is within the last 30 PH days (sensible window)
- *  - Either: no entry exists for that day, OR an in-progress entry exists (forgot to clock out)
+ *  - Date is within the last 30 days (sensible window)
+ *  - Date is on/after COA_MIN_DATE (all data starts June 1, 2026)
  *  - There is no PENDING coa for that same date already
  *  - A REJECTED coa for that date doesn't block (employee can refile with better info)
+ *
+ * Three eligible cases, each tagged with a `type`:
+ *  - 'missing'    : no entry exists for that day
+ *  - 'incomplete' : an in-progress entry exists (forgot to clock out)
+ *  - 'correction' : a COMPLETED entry exists, but the employee wants to adjust the
+ *                   recorded times (e.g. clocked in/out at the wrong time)
  */
 function eligibleCoaDates() {
   const u = currentUser();
@@ -2401,16 +2423,18 @@ function eligibleCoaDates() {
   const dates = [];
   for (let i = 1; i <= 30; i++) {
     const d = addDays(t, -i);
-    const entry = D.entries.find(e => e.userId===u.id && e.date===d);
-    const hasComplete = entry && entry.status === 'completed';
-    if (hasComplete) continue;  /* day already has a clean entry */
+    if (d < COA_MIN_DATE) continue;  /* nothing before data start date is eligible */
     const hasPendingCoa = D.coas.find(c => c.userId===u.id && c.date===d && c.status==='pending');
     if (hasPendingCoa) continue;
-    /* Eligible: no entry, OR has in-progress entry (forgot to clock out) */
-    let label = fmtDate(d);
-    if (entry && entry.status === 'in-progress') label += ' — missing clock out';
-    else label += ' — no entry filed';
-    dates.push({ value: d, label });
+    const entry = D.entries.find(e => e.userId===u.id && e.date===d);
+
+    let type, label = fmtDate(d);
+    if (!entry) { type = 'missing'; label += ' — no entry filed'; }
+    else if (entry.status === 'in-progress') { type = 'incomplete'; label += ' — missing clock out'; }
+    else if (entry.status === 'completed') { type = 'correction'; label += ' — adjust recorded times'; }
+    else continue;  /* unknown state — skip */
+
+    dates.push({ value: d, label, type });
   }
   return dates;
 }
@@ -2448,19 +2472,68 @@ function openCoaModal() {
   const eligible = eligibleCoaDates();
   const sel = document.getElementById('coa-date');
   if (eligible.length === 0) {
-    sel.innerHTML = '<option value="">No eligible dates (no missing attendance in last 30 days)</option>';
+    sel.innerHTML = '<option value="">No eligible dates (no correctable attendance in last 30 days)</option>';
   } else {
-    sel.innerHTML = eligible.map(d => `<option value="${d.value}">${d.label}</option>`).join('');
+    sel.innerHTML = eligible.map(d => `<option value="${d.value}" data-type="${d.type}">${d.label}</option>`).join('');
   }
-  document.getElementById('coa-in').value = '08:00';
-  document.getElementById('coa-out').value = '17:00';
   document.getElementById('coa-reason').value = '';
-  document.getElementById('coa-overnight').checked = false;
-  document.getElementById('coa-has-lunch').checked = false;
-  document.getElementById('coa-lunch-in').value = '12:00';
-  document.getElementById('coa-lunch-out').value = '13:00';
-  document.getElementById('coa-lunch-fields').style.display = 'none';
   document.getElementById('coa-modal').classList.add('active');
+  /* Seed the time/lunch fields for whichever date is selected first. */
+  prefillCoaForDate();
+}
+
+/* Populate the time + lunch inputs based on the currently selected date.
+ * For a 'correction' (the day already has a completed entry) we pre-fill the
+ * existing recorded times so the employee just nudges them. Otherwise we fall
+ * back to sensible defaults (8–5, no lunch). Also updates the modal hint so the
+ * person understands what filing will do for that day. */
+function prefillCoaForDate() {
+  const sel = document.getElementById('coa-date');
+  const opt = sel ? sel.selectedOptions[0] : null;
+  const type = opt ? opt.dataset.type : null;
+  const date = sel ? sel.value : '';
+  const u = currentUser();
+  const entry = date ? D.entries.find(e => e.userId===u.id && e.date===date) : null;
+
+  let inVal = '08:00', outVal = '17:00', overnight = false;
+  let hasLunch = false, lunchInVal = '12:00', lunchOutVal = '13:00';
+
+  if (type === 'correction' && entry) {
+    if (entry.clockIn)  inVal  = isoToZoneHHMM(entry.clockIn);
+    if (entry.clockOut) outVal = isoToZoneHHMM(entry.clockOut);
+    /* overnight if clock-out falls on a later calendar day than clock-in */
+    if (entry.clockIn && entry.clockOut) {
+      overnight = zoneYmd(new Date(entry.clockIn), ACTIVE_TZ) !== zoneYmd(new Date(entry.clockOut), ACTIVE_TZ);
+    }
+    if (entry.lunchStart && entry.lunchEnd) {
+      hasLunch = true;
+      lunchInVal  = isoToZoneHHMM(entry.lunchStart);
+      lunchOutVal = isoToZoneHHMM(entry.lunchEnd);
+    }
+  } else if (type === 'incomplete' && entry && entry.clockIn) {
+    /* Forgot to clock out: keep the real clock-in, let them supply the clock-out. */
+    inVal = isoToZoneHHMM(entry.clockIn);
+  }
+
+  document.getElementById('coa-in').value = inVal;
+  document.getElementById('coa-out').value = outVal;
+  document.getElementById('coa-overnight').checked = overnight;
+  document.getElementById('coa-has-lunch').checked = hasLunch;
+  document.getElementById('coa-lunch-in').value = lunchInVal;
+  document.getElementById('coa-lunch-out').value = lunchOutVal;
+  document.getElementById('coa-lunch-fields').style.display = hasLunch ? 'block' : 'none';
+
+  const note = document.getElementById('coa-type-note');
+  if (note) {
+    if (type === 'correction') {
+      note.textContent = 'This day already has a complete entry. Your current times are pre-filled — adjust them, give a reason, and submit for approval.';
+    } else if (type === 'incomplete') {
+      note.textContent = 'This day is missing a clock-out. Confirm the times and submit for approval.';
+    } else {
+      note.textContent = 'No entry was filed for this day. Enter your times and submit for approval.';
+    }
+  }
+  updateCoaLunchHint();
 }
 function closeCoaModal() { document.getElementById('coa-modal').classList.remove('active'); }
 
@@ -2489,6 +2562,7 @@ async function submitCoa() {
   const reason = document.getElementById('coa-reason').value.trim();
 
   if (!date) { toast('No date selected'); return; }
+  if (date < COA_MIN_DATE) { toast('COA cannot be filed for dates before ' + fmtDate(COA_MIN_DATE) + '.'); return; }
   if (!inTime || !outTime) { toast('Both clock-in and clock-out times required'); return; }
   if (!reason) { toast('Please provide a reason'); return; }
 
