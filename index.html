@@ -667,6 +667,8 @@
           <button class="btn" id="clock-in-btn" onclick="clockIn()">Clock in</button>
           <button class="btn btn-orange" id="lunch-start-btn" onclick="startLunch()" style="display:none">Start lunch break</button>
           <button class="btn btn-orange" id="lunch-end-btn" onclick="endLunch()" style="display:none">End lunch break</button>
+          <button class="btn btn-navy" id="pause-btn" onclick="pauseWork()" style="display:none">Pause</button>
+          <button class="btn btn-navy" id="resume-btn" onclick="resumeWork()" style="display:none">Resume</button>
           <button class="btn btn-ghost" id="clock-out-btn" onclick="clockOut()" style="display:none">Clock out</button>
         </div>
       </div>
@@ -1221,6 +1223,7 @@ function profileFromRow(r) {
     leavesEnabled: !!r.leaves_enabled,
     vlBalance: r.vl_balance ?? 0,
     slBalance: r.sl_balance ?? 0,
+    flexEnabled: !!r.flex_enabled,   /* flexible hours: employee may pause/resume the shift clock */
     timezone: r.timezone || null     /* IANA zone, e.g. "America/New_York"; null = treat as PHT */
   };
 }
@@ -1235,6 +1238,7 @@ function entryFromRow(r) {
     lunchStart: r.lunch_start || undefined,
     lunchEnd: r.lunch_end || undefined,
     lunchOverReason: r.lunch_over_reason || undefined,
+    pauses: Array.isArray(r.pauses) ? r.pauses : [],   /* flex pause/resume intervals: [{start, end}] */
     coaId: r.coa_id || undefined
   };
 }
@@ -1480,11 +1484,40 @@ function isLunchOver(entry) {
   return lunchMinutes(entry) > LUNCH_LIMIT_MIN;
 }
 
-/* Worked hours = total clock-in->clock-out span MINUS lunch time taken. */
+/* Worked hours = total clock-in->clock-out span MINUS lunch time taken MINUS
+ * all completed flex-pause intervals. */
 function workedHours(entry) {
   if (!entry || !entry.clockIn || !entry.clockOut) return 0;
   const total = hoursBetween(entry.clockIn, entry.clockOut);
-  return Math.max(0, total - lunchMinutes(entry) / 60);
+  return Math.max(0, total - lunchMinutes(entry) / 60 - pauseMinutes(entry) / 60);
+}
+
+/* ============== FLEX PAUSE HELPERS ==============
+ * `entry.pauses` is an array of { start, end } ISO-timestamp pairs. A flexible
+ * employee can pause and resume any number of times in one shift. The last
+ * element may have end === null, which means "currently paused".
+ *
+ * pauseMinutes sums only COMPLETED intervals (both start and end present), so
+ * an open pause doesn't subtract time until it's resumed. While paused, the
+ * live dashboard shows the running open-pause elapsed separately. */
+function pauseList(entry) {
+  return (entry && Array.isArray(entry.pauses)) ? entry.pauses : [];
+}
+function isPaused(entry) {
+  const p = pauseList(entry);
+  return p.length > 0 && !p[p.length - 1].end;
+}
+function pauseMinutes(entry) {
+  return pauseList(entry).reduce((sum, iv) => {
+    if (iv.start && iv.end) return sum + (new Date(iv.end) - new Date(iv.start)) / 60000;
+    return sum;
+  }, 0);
+}
+/* Open pause elapsed (minutes) right now, or 0 if not paused. Live display only. */
+function openPauseMinutes(entry) {
+  if (!isPaused(entry)) return 0;
+  const p = pauseList(entry);
+  return (Date.now() - new Date(p[p.length - 1].start).getTime()) / 60000;
 }
 
 function fmtLunchDuration(mins) {
@@ -1816,6 +1849,8 @@ function updateClockStatus() {
   const outBtn = document.getElementById('clock-out-btn');
   const lunchStartBtn = document.getElementById('lunch-start-btn');
   const lunchEndBtn = document.getElementById('lunch-end-btn');
+  const pauseBtn = document.getElementById('pause-btn');
+  const resumeBtn = document.getElementById('resume-btn');
   const lunchTimer = document.getElementById('lunch-timer');
 
   /* Reset visibility + inline styles for clean state-based show/hide below */
@@ -1823,6 +1858,8 @@ function updateClockStatus() {
   outBtn.style.display = 'none';
   lunchStartBtn.style.display = 'none';
   lunchEndBtn.style.display = 'none';
+  pauseBtn.style.display = 'none';
+  resumeBtn.style.display = 'none';
   lunchTimer.style.display = 'none';
   inBtn.disabled = false;
   inBtn.style.opacity = '';
@@ -1856,6 +1893,22 @@ function updateClockStatus() {
     return;
   }
 
+  /* Currently in-progress — handle PAUSED first (flex employees only) */
+  if (isPaused(entry)) {
+    /* State E: Work paused — only Resume is available; clock-out blocked until resumed */
+    const openMins = openPauseMinutes(entry);
+    const priorMins = pauseMinutes(entry);  /* completed pauses already banked */
+    const p = pauseList(entry);
+    status.textContent = `Paused since ${fmtTime(p[p.length - 1].start)}`;
+    status.classList.remove('in'); status.classList.add('out');
+    resumeBtn.style.display = 'inline-block';
+    lunchTimer.style.display = 'block';
+    const priorTxt = priorMins > 0 ? ` · ${fmtLunchDuration(priorMins)} already paused earlier this shift` : '';
+    lunchTimer.textContent = `⏸ Paused for ${fmtLunchDuration(openMins)}${priorTxt} — this time is excluded from worked hours`;
+    lunchTimer.style.color = 'var(--vc-navy)';
+    return;
+  }
+
   /* Currently in-progress — distinguish lunch sub-states */
   if (entry.lunchStart && !entry.lunchEnd) {
     /* State C: On lunch */
@@ -1886,17 +1939,31 @@ function updateClockStatus() {
   status.classList.add('in'); status.classList.remove('out');
   outBtn.style.display = 'inline-block';
 
+  /* Flex employees: offer Pause while actively working (not on lunch). */
+  if (u.flexEnabled) {
+    pauseBtn.style.display = 'inline-block';
+  }
+
+  /* If they've banked any completed pause time this shift, surface it. */
+  const banked = pauseMinutes(entry);
+  if (banked > 0) {
+    lunchTimer.style.display = 'block';
+    lunchTimer.textContent = `Paused ${fmtLunchDuration(banked)} so far this shift (excluded from hours)`;
+    lunchTimer.style.color = 'var(--ink-muted)';
+  }
+
   /* Show "Start lunch" only if no lunch taken yet (one lunch per day) */
   if (!entry.lunchStart) {
     lunchStartBtn.style.display = 'inline-block';
   } else if (entry.lunchEnd) {
-    /* Lunch already taken — show the summary in status */
+    /* Lunch already taken — show the summary in status (append to any pause note) */
     const mins = lunchMinutes(entry);
     const over = mins > LUNCH_LIMIT_MIN;
     lunchTimer.style.display = 'block';
-    lunchTimer.textContent = over
+    const lunchTxt = over
       ? `⚠ Lunch was ${fmtLunchDuration(mins)} (over ${LUNCH_LIMIT_MIN}-min limit — reason required at clock out)`
       : `Lunch taken: ${fmtLunchDuration(mins)}`;
+    lunchTimer.textContent = banked > 0 ? `${lunchTxt} · paused ${fmtLunchDuration(banked)}` : lunchTxt;
     lunchTimer.style.color = over ? 'var(--vc-red)' : 'var(--ink-muted)';
   }
 }
@@ -2084,6 +2151,7 @@ async function clockIn() {
         lunch_start: null,
         lunch_end: null,
         lunch_over_reason: null,
+        pauses: [],
         coa_id: null,
         status: 'in-progress',
         deleted_at: null
@@ -2184,6 +2252,65 @@ async function endLunch() {
   btn.textContent = 'End lunch break';
 }
 
+/* ============== FLEX PAUSE / RESUME ==============
+ * A flexible employee can pause the shift clock, step away, and resume. Each
+ * pause appends { start, end:null } to entry.pauses; resuming stamps the end.
+ * Completed intervals are subtracted from worked hours (see workedHours).
+ *
+ * Guards:
+ *  - Only available to flex-enabled employees (button is hidden otherwise, but
+ *    we re-check here so a stale UI can't slip a pause through).
+ *  - Can't pause while on lunch (end lunch first) — they're mutually exclusive.
+ *  - Can't pause if already paused; can't resume if not paused. */
+async function pauseWork() {
+  const u = currentUser();
+  if (!u.flexEnabled) { toast('Flexible hours are not enabled for your account.'); return; }
+  const entry = activeEntry(u.id);
+  if (!entry || entry.status !== 'in-progress') { toast('You need to be clocked in to pause.'); return; }
+  if (entry.lunchStart && !entry.lunchEnd) { toast('End your lunch break before pausing.'); return; }
+  if (isPaused(entry)) { toast('Work is already paused. Use Resume to continue.'); return; }
+
+  const btn = document.getElementById('pause-btn');
+  btn.disabled = true; btn.textContent = 'Pausing...';
+
+  const next = pauseList(entry).slice();
+  next.push({ start: nowISO(), end: null });
+  const { error } = await sb.from('time_entries').update({ pauses: next }).eq('id', entry.id);
+  if (error) {
+    toast('Could not pause: ' + error.message);
+    btn.disabled = false; btn.textContent = 'Pause';
+    return;
+  }
+  entry.pauses = next;
+  toast('Work paused. The clock is stopped until you resume.');
+  renderEmployee();
+  btn.disabled = false; btn.textContent = 'Pause';
+}
+
+async function resumeWork() {
+  const u = currentUser();
+  const entry = activeEntry(u.id);
+  if (!entry || !isPaused(entry)) { toast('There is no active pause to resume.'); return; }
+
+  const btn = document.getElementById('resume-btn');
+  btn.disabled = true; btn.textContent = 'Resuming...';
+
+  const next = pauseList(entry).slice();
+  next[next.length - 1] = { ...next[next.length - 1], end: nowISO() };
+  const { error } = await sb.from('time_entries').update({ pauses: next }).eq('id', entry.id);
+  if (error) {
+    toast('Could not resume: ' + error.message);
+    btn.disabled = false; btn.textContent = 'Resume';
+    return;
+  }
+  entry.pauses = next;
+  const lastIv = next[next.length - 1];
+  const mins = (new Date(lastIv.end) - new Date(lastIv.start)) / 60000;
+  toast(`Resumed. Paused for ${fmtLunchDuration(mins)} (excluded from hours).`);
+  renderEmployee();
+  btn.disabled = false; btn.textContent = 'Resume';
+}
+
 async function clockOut() {
   const u = currentUser();
   const entry = activeEntry(u.id);
@@ -2194,6 +2321,12 @@ async function clockOut() {
   /* Block clock-out if employee is still on lunch */
   if (entry.lunchStart && !entry.lunchEnd) {
     toast('End your lunch break before clocking out.');
+    return;
+  }
+  /* Block clock-out while paused — they must resume first so the open pause gets
+   * its end-stamp and is correctly excluded from worked hours. */
+  if (isPaused(entry)) {
+    toast('You are on a paused break. Resume before clocking out.');
     return;
   }
   /* If lunch was over the limit and no reason given yet, open the reason modal first.
@@ -2320,6 +2453,10 @@ function renderTimesheet() {
       } else {
         hoursDisplay += `<br><span style="color:var(--ink-muted);font-size:10px;">lunch ${fmtLunchDuration(lmins)}</span>`;
       }
+    }
+    const pmins = pauseMinutes(e);
+    if (pmins > 0) {
+      hoursDisplay += `<br><span style="color:var(--vc-navy);font-size:10px;">paused ${fmtLunchDuration(pmins)}</span>`;
     }
     return {
       date: e.date,
@@ -2704,15 +2841,21 @@ function renderAdmin() {
       let elapsed = hoursBetween(e.clockIn, nowISO());
       if (e.lunchStart && e.lunchEnd) elapsed -= lunchMinutes(e) / 60;
       else if (e.lunchStart) elapsed -= (Date.now() - new Date(e.lunchStart).getTime()) / 3600000;
+      /* Subtract banked pauses, plus any open pause currently running. */
+      elapsed -= pauseMinutes(e) / 60;
+      if (isPaused(e)) elapsed -= openPauseMinutes(e) / 60;
       const dur = round2(Math.max(0, elapsed));
       const onLunchBadge = (e.lunchStart && !e.lunchEnd)
         ? ' <span class="badge on-leave" style="font-size:9px; padding:1px 6px;">on lunch</span>'
         : '';
+      const pausedBadge = isPaused(e)
+        ? ' <span class="badge out" style="font-size:9px; padding:1px 6px; background:var(--vc-navy); color:white;">paused</span>'
+        : '';
       return `<tr>
-        <td>${u.name}${onLunchBadge}</td>
+        <td>${u.name}${onLunchBadge}${pausedBadge}</td>
         <td class="mono">${fmtTime(e.clockIn)}</td>
         <td class="mono">${dur} hrs</td>
-        <td><span class="badge in">Active</span></td>
+        <td><span class="badge in">${isPaused(e) ? 'Paused' : 'Active'}</span></td>
       </tr>`;
     }).join('');
   }
@@ -2747,6 +2890,10 @@ function renderEmployeesTable() {
     } else {
       leavesCell = `<button class="btn btn-sm" onclick="toggleLeavesEnabled('${u.id}')">Enable leaves</button>`;
     }
+    /* Flexible-hours toggle: green "Flex on" when enabled, ghost "Enable flex" when not. */
+    const flexBtn = u.flexEnabled
+      ? `<button class="btn btn-sm" style="background:var(--vc-green);border-color:var(--vc-green);" onclick="toggleFlexEnabled('${u.id}')" title="Employee can pause/resume their shift. Click to disable.">Flex on</button>`
+      : `<button class="btn btn-ghost btn-sm" onclick="toggleFlexEnabled('${u.id}')" title="Allow this employee to pause and resume work hours.">Enable flex</button>`;
     return `<tr>
       <td><strong style="color:var(--ink)">${u.name}</strong></td>
       <td class="mono">${u.username}</td>
@@ -2757,6 +2904,7 @@ function renderEmployeesTable() {
       <td class="mono"><strong style="color:var(--vc-navy)">${currency(hrs*u.rate)}</strong></td>
       <td><div class="actions-cell">
         <button class="btn btn-ghost btn-sm" onclick="editRate('${u.id}')">Edit rate</button>
+        ${flexBtn}
       </div></td>
     </tr>`;
   }).join('');
@@ -2814,6 +2962,24 @@ async function toggleLeavesEnabled(uid) {
     u.leavesEnabled = true;
     toast(`Leaves enabled for ${u.name} (VL ${u.vlBalance}, SL ${u.slBalance})`);
   }
+  renderEmployeesTable();
+}
+
+/* Toggle flexible hours for an employee. When on, the employee sees Pause/Resume
+ * controls on their dashboard and any paused time is excluded from worked hours.
+ * Unlike leaves, flex is independent of employment status — any employee can be
+ * flagged flexible. Disabling does NOT retroactively change past entries; their
+ * already-recorded pauses stay subtracted (the data is preserved). */
+async function toggleFlexEnabled(uid) {
+  const u = D.users.find(x => x.id===uid);
+  if (!u) return;
+  const turningOn = !u.flexEnabled;
+  if (!turningOn && !confirm(`Disable flexible hours for ${u.name}? They will no longer be able to pause their shift. Past records are unchanged.`)) return;
+
+  const { error } = await sb.from('profiles').update({ flex_enabled: turningOn }).eq('id', uid);
+  if (error) { toast('Update failed: ' + error.message); return; }
+  u.flexEnabled = turningOn;
+  toast(turningOn ? `Flexible hours enabled for ${u.name}` : `Flexible hours disabled for ${u.name}`);
   renderEmployeesTable();
 }
 
@@ -2990,6 +3156,11 @@ function renderAdminTimesheets() {
         hoursCell += `<br><span style="color:var(--ink-muted); font-size:10px;">lunch ${lunchTxt}</span>`;
       }
     }
+    const pmins = pauseMinutes(e);
+    if (pmins > 0) {
+      const nPauses = pauseList(e).filter(iv => iv.start && iv.end).length;
+      hoursCell += `<br><span style="color:var(--vc-navy); font-size:10px; cursor:help;" title="${nPauses} pause${nPauses===1?'':'s'} totalling ${fmtLunchDuration(pmins)}, excluded from worked hours">⏸ paused ${fmtLunchDuration(pmins)}</span>`;
+    }
     const rowBg = isLunchOver(e) ? ' style="background:#FFF8F6;"' : '';
     const ez = r.user.timezone || DEFAULT_TZ;
     const zoneTag = ` <span style="font-size:9px;color:var(--ink-muted);letter-spacing:0.04em;">${tzLabel(ez)}</span>`;
@@ -3066,21 +3237,23 @@ function exportTimesheetCSV() {
     ['Generated', new Date().toLocaleString('en-US', {timeZone: ACTIVE_TZ}) + ' ' + tzLabel(ACTIVE_TZ)],
     ['Note', 'Clock times shown in each employee\u2019s own timezone (see Zone column)'],
     [],
-    ['Employee', 'Zone', 'Date', 'Clock In', 'Clock Out', 'Worked Hours', 'Lunch (min)', 'Over Lunch?', 'Over-Lunch Reason']
+    ['Employee', 'Zone', 'Date', 'Clock In', 'Clock Out', 'Worked Hours', 'Lunch (min)', 'Paused (min)', 'Over Lunch?', 'Over-Lunch Reason']
   ];
   entries.forEach(e => {
     const u = D.users.find(x => x.id===e.userId) || {};
     const z = u.timezone || DEFAULT_TZ;
     const lmins = lunchMinutes(e);
+    const pmins = pauseMinutes(e);
     rows.push([
       u.name, tzLabel(z), e.date, fmtTime(e.clockIn, z), fmtTime(e.clockOut, z),
       round2(workedHours(e)),
       lmins > 0 ? Math.round(lmins) : '',
+      pmins > 0 ? Math.round(pmins) : '',
       isLunchOver(e) ? 'YES' : '',
       e.lunchOverReason || ''
     ]);
   });
-  rows.push([], ['Total', '', '', '', '', round2(total), '', '', '']);
+  rows.push([], ['Total', '', '', '', '', round2(total), '', '', '', '']);
   const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
   const blob = new Blob([csv], {type:'text/csv'});
   const url = URL.createObjectURL(blob);
@@ -3224,7 +3397,7 @@ async function approveCoa(id) {
   let entry = D.entries.find(e => e.userId===c.userId && e.date===c.date);
   if (entry) {
     const { error: uErr } = await sb.from('time_entries')
-      .update({ clock_in: c.clockIn, clock_out: c.clockOut, lunch_start: c.lunchStart || null, lunch_end: c.lunchEnd || null, status: 'completed', coa_id: c.id })
+      .update({ clock_in: c.clockIn, clock_out: c.clockOut, lunch_start: c.lunchStart || null, lunch_end: c.lunchEnd || null, pauses: [], status: 'completed', coa_id: c.id })
       .eq('id', entry.id);
     if (uErr) { toast('COA marked approved, but entry update failed: ' + uErr.message); }
     else {
@@ -3232,6 +3405,7 @@ async function approveCoa(id) {
       entry.clockOut = c.clockOut;
       entry.lunchStart = c.lunchStart || undefined;
       entry.lunchEnd = c.lunchEnd || undefined;
+      entry.pauses = [];   /* corrected times are authoritative; old pauses no longer apply */
       entry.status = 'completed';
       entry.coaId = c.id;
     }
@@ -3380,7 +3554,7 @@ function tickClock() {
         const empApp = document.getElementById('emp-app');
         if (empApp && empApp.classList.contains('active')) {
           const entry = activeEntry(u.id);
-          if (entry && entry.lunchStart && !entry.lunchEnd) {
+          if (entry && ((entry.lunchStart && !entry.lunchEnd) || isPaused(entry))) {
             updateClockStatus();
           }
         }
