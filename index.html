@@ -460,6 +460,140 @@
   .badge.out { background: var(--paper); color: var(--ink-muted); border: 1px solid var(--line-strong); }
   .badge.on-leave { background: #EFE6F4; color: #6B4F95; border: 1px solid #D4C2E0; }
   .badge.absent { background: #FBE9E9; color: var(--vc-red); border: 1px solid #F1C2C2; }
+  .badge.holiday { background: #FFF3D9; color: #8A6100; border: 1px solid #F0DBA6; }
+  .badge.capped { background: #FDECEC; color: var(--vc-red); border: 1px solid #F3C9C9; }
+  .badge.edited { background: #EAF2FB; color: #1E5BA8; border: 1px solid #C3DBF2; }
+
+  /* ===== MULTI-SELECT MENU (payroll employee filter) ===== */
+  .multi-menu {
+    display: none;
+    position: absolute;
+    z-index: 60;
+    margin-top: -6px;
+    background: var(--surface);
+    border: 1px solid var(--line-strong);
+    border-radius: 6px;
+    box-shadow: 0 8px 28px rgba(26,31,54,0.14);
+    width: 280px;
+    overflow: hidden;
+  }
+  .multi-menu.active { display: block; }
+  .multi-menu-head, .multi-menu-foot {
+    padding: 8px 10px;
+    background: var(--paper);
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .multi-menu-head { border-bottom: 1px solid var(--line); }
+  .multi-menu-foot { border-top: 1px solid var(--line); justify-content: flex-end; }
+  .multi-menu-list { max-height: 260px; overflow-y: auto; padding: 4px 0; }
+  .multi-menu-list label {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 7px 12px;
+    font-size: 13px;
+    cursor: pointer;
+    color: var(--ink);
+  }
+  .multi-menu-list label:hover { background: var(--paper); }
+  .multi-menu-list input[type="checkbox"] { width: auto; margin: 0; }
+
+  /* ===== INVOICE BUILDER ===== */
+  .ib-grid { width: 100%; border-collapse: collapse; margin-bottom: 4px; }
+  .ib-grid th, .ib-grid td {
+    border: 1px solid var(--line);
+    padding: 8px 10px;
+    font-size: 12px;
+    text-align: right;
+  }
+  .ib-grid th {
+    background: var(--paper);
+    font-weight: 600;
+    color: var(--ink-soft);
+    font-size: 10px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .ib-grid td.lab, .ib-grid th.lab { text-align: left; }
+  .ib-grid td.lab { font-weight: 600; color: var(--ink); }
+  .ib-grid input {
+    width: 100%;
+    max-width: 110px;
+    padding: 5px 7px;
+    border: 1px solid var(--line-strong);
+    border-radius: 4px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12px;
+    text-align: right;
+    background: var(--surface);
+    color: var(--ink);
+  }
+  .ib-grid input:focus { outline: none; border-color: var(--vc-green); }
+  .ib-grid input.dirty { border-color: var(--vc-navy); background: #F4F8FD; font-weight: 600; }
+  .ib-amt { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ink); }
+  .ib-total-row td { background: var(--paper); font-weight: 700; }
+  .ib-total-row td.amt { color: var(--vc-navy); font-size: 14px; }
+  .ib-actual { font-size: 10px; color: var(--ink-muted); display: block; margin-top: 2px; }
+
+  /* ===== INVOICE ===== */
+  .inv-sheet {
+    background: #fff;
+    width: 100%;
+    max-width: 780px;
+    margin: 0 auto;
+    padding: 40px 44px 34px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    color: #1a1f36;
+    font-size: 12px;
+  }
+  .inv-head { display:flex; align-items:center; gap:16px; justify-content:center; margin-bottom: 6px; }
+  .inv-head img { height: 60px; }
+  .inv-rule { height:1px; background:var(--line-strong); margin: 18px 0 10px; }
+  .inv-title { text-align:center; font-size:19px; font-weight:700; color:var(--vc-navy); letter-spacing:0.01em; }
+  .inv-meta { display:flex; justify-content:space-between; gap:24px; margin-top: 22px; }
+  .inv-billto b { display:block; font-size:12px; margin-bottom:4px; color:#1a1f36; }
+  .inv-billto div { color:var(--ink-soft); line-height:1.6; }
+  .inv-numbers { min-width: 250px; }
+  .inv-numbers .r { display:flex; justify-content:space-between; gap:20px; padding:3px 0; color:var(--ink-soft); }
+  .inv-balance {
+    margin-top: 10px; background: var(--vc-navy); color:#fff;
+    display:flex; justify-content:space-between; align-items:center;
+    padding: 9px 12px; font-weight:700; font-size:13px;
+  }
+  .inv-balance span.lbl { font-weight:700; }
+  .inv-balance span.lbl i { font-weight:400; font-style:italic; font-size:11px; opacity:.85; }
+  .inv-desc {
+    margin-top: 26px; background: var(--vc-navy); color:#fff;
+    padding: 9px 14px; font-weight:700; font-size:12.5px; letter-spacing:0.01em;
+  }
+  table.inv-table { width:100%; border-collapse: collapse; }
+  table.inv-table th, table.inv-table td {
+    border: 1px solid var(--line-strong); padding: 10px 12px; text-align: center; font-size: 12px;
+  }
+  table.inv-table th { font-weight:600; color:var(--ink-soft); background:#fff; line-height:1.3; }
+  table.inv-table th small { display:block; font-weight:400; font-size:9.5px; letter-spacing:0.04em; }
+  table.inv-table td.lab { text-align:left; font-weight:700; color:#1a1f36; }
+  table.inv-table tr.inv-total td { font-weight:700; }
+  table.inv-table td.tot { background: var(--vc-navy); color:#fff; font-weight:700; }
+  .inv-strike { color: var(--ink-muted); text-decoration: line-through; font-size: 10px; display:block; }
+  .inv-pay { margin-top: 26px; display:flex; justify-content:space-between; gap:30px; }
+  .inv-pay b { font-size:12px; }
+  .inv-pay .lines { color:var(--ink-soft); line-height:1.7; margin-top:4px; }
+  .inv-pay .remit { color:var(--ink-soft); font-size:11px; padding-top:2px; }
+  .inv-note { margin-top:18px; font-size:10.5px; color:var(--ink-muted); border-top:1px solid var(--line); padding-top:10px; }
+
+  @media print {
+    body * { visibility: hidden !important; }
+    #invoice-print, #invoice-print * { visibility: visible !important; }
+    #invoice-print {
+      position: absolute; left: 0; top: 0; width: 100%;
+      padding: 0; margin: 0; border: none;
+    }
+    .no-print { display: none !important; }
+  }
   .empty {
     padding: 48px 20px;
     text-align: center;
@@ -799,6 +933,8 @@
         <div class="nav-item" data-admin-view="approvals" onclick="switchAdminView('approvals')">Leave approvals<span id="approval-dot" class="approval-count" style="display:none"></span></div>
         <div class="nav-item" data-admin-view="coa-approvals" onclick="switchAdminView('coa-approvals')">COA approvals<span id="coa-approval-dot" class="approval-count" style="display:none"></span></div>
         <div class="nav-item" data-admin-view="payroll" onclick="switchAdminView('payroll')">Payroll</div>
+        <div class="nav-item" data-admin-view="invoices" onclick="switchAdminView('invoices')">Invoices</div>
+        <div class="nav-item" data-admin-view="holidays" onclick="switchAdminView('holidays')">Holidays</div>
       </div>
     </div>
     <div class="user-chip">
@@ -875,7 +1011,7 @@
 
       <div class="panel">
         <table>
-          <thead><tr><th>Name</th><th>Username</th><th>Status</th><th>Leaves</th><th>Hourly rate</th><th>Total hours (period)</th><th>Est. pay</th><th></th></tr></thead>
+          <thead><tr><th>Name</th><th>Username</th><th>Status</th><th>Leaves</th><th>Hourly rate</th><th>Billing cycle</th><th>Total hours (period)</th><th>Est. pay</th><th></th></tr></thead>
           <tbody id="employees-table"></tbody>
         </table>
       </div>
@@ -985,20 +1121,40 @@
       <div class="page-header">
         <div>
           <div class="page-title">Payroll</div>
-          <div class="page-sub">Compute and export pay for the period</div>
+          <div class="page-sub">Compute and export pay for the period · <span id="payroll-range-note" style="color:var(--vc-navy); font-weight:600;"></span></div>
         </div>
       </div>
 
       <div class="toolbar">
-        <select id="payroll-period">
+        <select id="payroll-period" onchange="onPayrollPeriodChange()">
           <option value="this-week">This week</option>
           <option value="last-week">Last week</option>
           <option value="this-month" selected>This month</option>
           <option value="last-month">Last month</option>
+          <option value="custom">Custom range…</option>
         </select>
+        <input type="date" id="payroll-custom-from" style="display:none;" onchange="renderPayroll()">
+        <input type="date" id="payroll-custom-to" style="display:none;" onchange="renderPayroll()">
+
+        <button class="btn btn-ghost btn-sm" id="payroll-emp-btn" onclick="togglePayrollEmpMenu(event)">
+          Employees: <strong id="payroll-emp-label">All</strong> ▾
+        </button>
+
         <div class="toolbar-spacer"></div>
         <button class="btn btn-ghost btn-sm" onclick="renderPayroll()">Refresh</button>
         <button class="btn btn-sm" onclick="exportPayrollCSV()">Export CSV ↓</button>
+      </div>
+
+      <!-- Multi-select employee picker. Anchored under the toolbar button. -->
+      <div id="payroll-emp-menu" class="multi-menu">
+        <div class="multi-menu-head">
+          <button class="btn btn-ghost btn-sm" onclick="payrollEmpSelectAll(true)">Select all</button>
+          <button class="btn btn-ghost btn-sm" onclick="payrollEmpSelectAll(false)">Clear</button>
+        </div>
+        <div id="payroll-emp-list" class="multi-menu-list"></div>
+        <div class="multi-menu-foot">
+          <button class="btn btn-sm" onclick="applyPayrollEmpFilter()">Apply</button>
+        </div>
       </div>
 
       <div class="panel">
@@ -1006,6 +1162,52 @@
           <thead><tr><th>Employee</th><th>Days worked</th><th>Total hours</th><th>Rate</th><th>Gross pay</th></tr></thead>
           <tbody id="payroll-rows"></tbody>
           <tfoot id="payroll-foot"></tfoot>
+        </table>
+      </div>
+    </div>
+
+    <!-- INVOICES -->
+    <div class="view" data-admin-view-pane="invoices">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Invoices</div>
+          <div class="page-sub">Generate a bi-weekly / monthly invoice from actual hours worked</div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-bottom:18px;">
+        <div class="panel-header"><div class="panel-title">Current cutoffs</div>
+          <span class="page-sub" style="font-size:11px;">Derived from each employee's cycle anchor. Configure it under <strong>Employees</strong>.</span>
+        </div>
+        <table>
+          <thead><tr><th>Employee</th><th>Frequency</th><th>Current cutoff</th><th>Hours in cutoff</th><th>Cap</th><th>Billable</th><th></th></tr></thead>
+          <tbody id="cutoff-rows"></tbody>
+        </table>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header"><div class="panel-title">Invoice history</div></div>
+        <table>
+          <thead><tr><th>Invoice #</th><th>Employee</th><th>Period</th><th>Hours</th><th>Amount</th><th>Status</th><th></th></tr></thead>
+          <tbody id="invoice-rows"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- HOLIDAYS -->
+    <div class="view" data-admin-view-pane="holidays">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Holidays</div>
+          <div class="page-sub">Client-declared non-working days. A holiday overrides the automatic "Absent" tag.</div>
+        </div>
+        <button class="btn btn-navy" onclick="openHolidayModal()">+ Add holiday</button>
+      </div>
+
+      <div class="panel">
+        <table>
+          <thead><tr><th>Date</th><th>Holiday</th><th>Applies to</th><th>Paid</th><th>Credited hours</th><th></th></tr></thead>
+          <tbody id="holiday-rows"></tbody>
         </table>
       </div>
     </div>
@@ -1187,6 +1389,200 @@
   </div>
 </div>
 
+<!-- BILLING CYCLE CONFIG -->
+<div class="modal-backdrop" id="cycle-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Billing cycle — <span id="cyc-emp-name"></span></div>
+      <button class="modal-close" onclick="closeCycleModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="cyc-uid">
+      <div class="row-2">
+        <div class="field">
+          <label>Frequency</label>
+          <select id="cyc-freq" onchange="previewCycle()">
+            <option value="biweekly">Bi-weekly (every 2 weeks)</option>
+            <option value="monthly">Monthly</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Cutoff starts on</label>
+          <input type="date" id="cyc-anchor" onchange="previewCycle()">
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Max billable hours per cutoff (cap)</label>
+        <input type="number" id="cyc-cap" step="0.5" placeholder="80">
+      </div>
+
+      <div style="border-top:1px solid var(--line); padding-top:14px; margin-bottom:14px;">
+        <label style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-muted);">Payment details (printed on invoice)</label>
+      </div>
+      <div class="row-2">
+        <div class="field"><label>Bank</label><input type="text" id="cyc-bank" placeholder="BPI"></div>
+        <div class="field"><label>Account name</label><input type="text" id="cyc-bank-name" placeholder="Juan Dela Cruz"></div>
+      </div>
+      <div class="row-2">
+        <div class="field"><label>Account number</label><input type="text" id="cyc-bank-no"></div>
+        <div class="field"><label>Email</label><input type="text" id="cyc-bank-email"></div>
+      </div>
+      <div class="field"><label>Address</label><input type="text" id="cyc-bank-addr"></div>
+
+      <div id="cyc-preview" style="padding:12px 14px; background:var(--accent-soft); border-left:3px solid var(--vc-green); border-radius:4px; font-size:12px; color:var(--ink);"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm" onclick="closeCycleModal()">Cancel</button>
+      <button class="btn btn-sm" onclick="saveCycle()">Save cycle</button>
+    </div>
+  </div>
+</div>
+
+<!-- HOLIDAY -->
+<div class="modal-backdrop" id="holiday-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Add holiday</div>
+      <button class="modal-close" onclick="closeHolidayModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="row-2">
+        <div class="field"><label>Date</label><input type="date" id="hol-date"></div>
+        <div class="field"><label>Name</label><input type="text" id="hol-name" placeholder="Independence Day (US)"></div>
+      </div>
+      <div class="field">
+        <label>Applies to</label>
+        <select id="hol-user"><option value="">All employees (company-wide)</option></select>
+      </div>
+      <div class="row-2">
+        <div class="field">
+          <label>Treatment</label>
+          <select id="hol-paid" onchange="toggleHolHours()">
+            <option value="1">Paid holiday (credit hours)</option>
+            <option value="0">Unpaid / excused (no hours, not absent)</option>
+          </select>
+        </div>
+        <div class="field" id="hol-hours-field">
+          <label>Credited hours</label>
+          <input type="number" id="hol-hours" step="0.5" value="8">
+        </div>
+      </div>
+      <p style="font-size:11px; color:var(--ink-muted); margin-top:-4px;">
+        On a holiday, employees with no time entry are tagged <strong>Holiday</strong> instead of <strong>Absent</strong>.
+        Paid holidays appear as <strong>Holiday hours</strong> on the invoice. If someone <em>did</em> clock in that day
+        (or filed a COA), their actual hours are used as normal.
+      </p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm" onclick="closeHolidayModal()">Cancel</button>
+      <button class="btn btn-sm" onclick="saveHoliday()">Add holiday</button>
+    </div>
+  </div>
+</div>
+
+<!-- INVOICE BUILDER -->
+<div class="modal-backdrop" id="invoice-builder-modal">
+  <div class="modal" style="max-width:640px; width:96%;">
+    <div class="modal-header">
+      <div class="modal-title">Generate invoice — <span id="ib-emp-name"></span></div>
+      <button class="modal-close" onclick="closeInvoiceBuilder()">×</button>
+    </div>
+    <div class="modal-body">
+
+      <!-- Billing period. Collapsed by default: the configured cutoff is used
+           unless the admin explicitly chooses to override it. -->
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+        <label style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-muted);">Billing period</label>
+        <button class="btn btn-ghost btn-sm" id="ib-dates-toggle" style="font-size:10px; padding:2px 8px;" onclick="toggleIbDates()">Override dates…</button>
+      </div>
+      <div class="row-2" id="ib-dates" style="display:none;">
+        <div class="field">
+          <label>From</label>
+          <input type="date" id="ib-from" onchange="onIbDateChange()">
+        </div>
+        <div class="field">
+          <label>To</label>
+          <input type="date" id="ib-to" onchange="onIbDateChange()">
+        </div>
+      </div>
+
+      <!-- What the raw time entries actually say, always visible next to the
+           editable figures so an override never hides the underlying truth. -->
+      <div id="ib-context" style="padding:9px 12px; background:var(--paper); border:1px solid var(--line); border-radius:4px; font-size:11px; color:var(--ink-soft); margin-bottom:16px;"></div>
+
+      <label style="display:block; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-muted); margin-bottom:8px;">Hours &amp; rate</label>
+      <table class="ib-grid">
+        <thead>
+          <tr>
+            <th class="lab"></th>
+            <th style="width:120px;">Rate (PHP/hr)</th>
+            <th style="width:110px;">Hours</th>
+            <th style="width:130px;">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="lab">Regular</td>
+            <td rowspan="3" style="vertical-align:middle;">
+              <input type="number" id="ib-rate" step="0.01" min="0" oninput="onIbFieldChange('ib-rate')">
+            </td>
+            <td><input type="number" id="ib-regular" step="0.25" min="0" oninput="onIbFieldChange('ib-regular')"></td>
+            <td class="ib-amt" id="ib-regular-amt">—</td>
+          </tr>
+          <tr>
+            <td class="lab">Overtime</td>
+            <td><input type="number" id="ib-overtime" step="0.25" min="0" oninput="onIbFieldChange('ib-overtime')"></td>
+            <td class="ib-amt" id="ib-overtime-amt">—</td>
+          </tr>
+          <tr>
+            <td class="lab">Holiday</td>
+            <td><input type="number" id="ib-holiday" step="0.25" min="0" oninput="onIbFieldChange('ib-holiday')"></td>
+            <td class="ib-amt" id="ib-holiday-amt">—</td>
+          </tr>
+          <tr class="ib-total-row">
+            <td class="lab">Total</td>
+            <td></td>
+            <td class="ib-amt" id="ib-total-hours">0</td>
+            <td class="ib-amt amt" id="ib-total-amt">—</td>
+          </tr>
+        </tbody>
+      </table>
+      <p style="font-size:10.5px; color:var(--ink-muted); margin-top:6px;">
+        Amounts are always calculated (hours × rate) — they can't be typed directly.
+      </p>
+
+      <div id="ib-dirty-note" style="display:none; margin-top:12px; padding:9px 12px; background:#EAF2FB; border-left:3px solid #1E5BA8; border-radius:4px; font-size:11px; color:var(--ink);">
+        <strong>Manual override in effect.</strong> The highlighted figures no longer match what the time entries compute to. The invoice will be generated from the values you entered.
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm" onclick="closeInvoiceBuilder()">Cancel</button>
+      <button class="btn btn-ghost btn-sm" onclick="recomputeBuilder(true)" title="Discard overrides and reload the computed figures">Reset</button>
+      <button class="btn btn-sm" onclick="previewFromBuilder()">Preview invoice →</button>
+    </div>
+  </div>
+</div>
+
+<!-- INVOICE PREVIEW -->
+<div class="modal-backdrop" id="invoice-modal">
+  <div class="modal" style="max-width:880px; width:96%;">
+    <div class="modal-header no-print">
+      <div class="modal-title">Invoice preview</div>
+      <button class="modal-close" onclick="closeInvoiceModal()">×</button>
+    </div>
+    <div class="modal-body" style="background:var(--paper); max-height:72vh; overflow:auto;">
+      <div id="invoice-print"></div>
+    </div>
+    <div class="modal-footer no-print">
+      <span id="inv-excess-note" style="flex:1; font-size:11px; color:var(--vc-red);"></span>
+      <button class="btn btn-ghost btn-sm" onclick="closeInvoiceModal()">Close</button>
+      <button class="btn btn-ghost btn-sm" onclick="window.print()">Print / Save PDF</button>
+      <button class="btn btn-sm" id="inv-save-btn" onclick="saveInvoice()">Save invoice</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -1224,7 +1620,49 @@ function profileFromRow(r) {
     vlBalance: r.vl_balance ?? 0,
     slBalance: r.sl_balance ?? 0,
     flexEnabled: !!r.flex_enabled,   /* flexible hours: employee may pause/resume the shift clock */
-    timezone: r.timezone || null     /* IANA zone, e.g. "America/New_York"; null = treat as PHT */
+    timezone: r.timezone || null,    /* IANA zone, e.g. "America/New_York"; null = treat as PHT */
+
+    /* ---- Billing cycle config (see BILLING CYCLE ENGINE below) ---- */
+    cycleFrequency: r.cycle_frequency || 'biweekly',
+    cycleAnchor: r.cycle_anchor || null,   /* first day of any one cutoff; all others derive from it */
+    capHours: (r.cap_hours === null || r.cap_hours === undefined) ? null : Number(r.cap_hours),
+
+    /* ---- Payment block printed on the invoice ---- */
+    bankName: r.bank_name || '',
+    bankAccountName: r.bank_account_name || '',
+    bankAccountNo: r.bank_account_no || '',
+    bankEmail: r.bank_email || '',
+    bankAddress: r.bank_address || ''
+  };
+}
+function holidayFromRow(r) {
+  return {
+    id: r.id,
+    date: r.holiday_date,
+    name: r.name,
+    userId: r.user_id || null,        /* null = company-wide */
+    paid: !!r.paid,
+    hours: Number(r.hours) || 0
+  };
+}
+function invoiceFromRow(r) {
+  return {
+    id: r.id,
+    invoiceNo: r.invoice_no,
+    userId: r.user_id,
+    periodStart: r.period_start,
+    periodEnd: r.period_end,
+    invoiceDate: r.invoice_date,
+    rate: Number(r.rate) || 0,
+    regularHours: Number(r.regular_hours) || 0,
+    overtimeHours: Number(r.overtime_hours) || 0,
+    holidayHours: Number(r.holiday_hours) || 0,
+    excessHours: Number(r.excess_hours) || 0,
+    capHours: (r.cap_hours === null || r.cap_hours === undefined) ? null : Number(r.cap_hours),
+    totalAmount: Number(r.total_amount) || 0,
+    status: r.status,
+    notes: r.notes || null,
+    createdAt: r.created_at
   };
 }
 function entryFromRow(r) {
@@ -1278,11 +1716,13 @@ function coaFromRow(r) {
  * the admin gets all rows. We load into the same cache shape the UI expects.
  */
 async function hydrate() {
-  const [profilesRes, entriesRes, leavesRes, coasRes] = await Promise.all([
+  const [profilesRes, entriesRes, leavesRes, coasRes, holsRes, invRes] = await Promise.all([
     sb.from('profiles').select('*'),
     sb.from('time_entries').select('*').is('deleted_at', null),
     sb.from('leave_requests').select('*'),
-    sb.from('coa_requests').select('*')
+    sb.from('coa_requests').select('*'),
+    sb.from('holidays').select('*'),
+    sb.from('invoices').select('*')
   ]);
   if (profilesRes.error) throw profilesRes.error;
   if (entriesRes.error) throw entriesRes.error;
@@ -1293,10 +1733,15 @@ async function hydrate() {
   D.entries = (entriesRes.data  || []).map(entryFromRow);
   D.leaves  = (leavesRes.data   || []).map(leaveFromRow);
   D.coas    = (coasRes.data     || []).map(coaFromRow);
+
+  /* Holidays/invoices are additive features. If the migration hasn't been run
+   * yet, don't take the whole app down — just run without them. */
+  D.holidays = (holsRes && !holsRes.error) ? (holsRes.data || []).map(holidayFromRow) : [];
+  D.invoices = (invRes  && !invRes.error)  ? (invRes.data  || []).map(invoiceFromRow) : [];
 }
 
 /* The in-memory cache. session holds the logged-in user's UUID. */
-let D = { users: [], entries: [], leaves: [], coas: [], session: null };
+let D = { users: [], entries: [], leaves: [], coas: [], holidays: [], invoices: [], session: null };
 
 /* ============== TIMEZONE UTILITIES ==============
  * All clock-in/out timestamps are stored as UTC ISO strings (timezone-correct).
@@ -1609,6 +2054,187 @@ function getApprovedLeaveOn(userId, dateStr) {
     l.status === 'approved' &&
     l.from <= dateStr && dateStr <= l.to
   ) || null;
+}
+
+/* ============== HOLIDAY HELPERS ==============
+ * A holiday is a client-declared non-working day. Without one, an employee
+ * with no time entry on a working day is auto-tagged ABSENT. That's wrong for
+ * days like the US 4th of July, where the client told everyone not to work.
+ *
+ * Precedence when classifying a day with NO time entry:
+ *     approved leave  >  holiday  >  absent
+ * A per-employee holiday row beats the company-wide row for the same date.
+ *
+ * If the employee DID clock in (or filed a COA) on a holiday, the entry wins —
+ * we bill the real hours worked and don't also credit holiday hours. */
+function getHolidayOn(userId, dateStr) {
+  const forUser = D.holidays.find(h => h.date === dateStr && h.userId === userId);
+  if (forUser) return forUser;
+  return D.holidays.find(h => h.date === dateStr && !h.userId) || null;
+}
+
+/* ============== BILLING CYCLE ENGINE ==============
+ * Admin sets ONE anchor date per employee: the first day of any known cutoff.
+ * Every other cutoff — past or future — is derived from it. So the admin
+ * configures each person once instead of re-entering dates every fortnight.
+ *
+ *   biweekly: 14-day blocks from the anchor. A cutoff that starts Mon Jun 22
+ *             runs through Fri Jul 03 (10 working days) and the NEXT one
+ *             starts Mon Jul 06. We present the period as anchor..anchor+13,
+ *             but trim the trailing weekend off the label so it reads
+ *             "June 22 to July 3" the way the client writes it.
+ *   monthly:  1-month blocks from the anchor, e.g. Jul 03 – Aug 02.
+ *
+ * cycleForDate(user, date) returns the cutoff CONTAINING that date, so the
+ * engine works for back-dated invoices, not just "the current one".
+ */
+function addMonths(dateStr, n) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const total = (y * 12 + (m - 1)) + n;
+  const ny = Math.floor(total / 12);
+  const nm = (total % 12) + 1;
+  /* Clamp the day to the length of the target month (Jan 31 + 1mo -> Feb 28). */
+  const lastDay = new Date(Date.UTC(ny, nm, 0)).getUTCDate();
+  const nd = Math.min(d, lastDay);
+  return `${ny}-${String(nm).padStart(2,'0')}-${String(nd).padStart(2,'0')}`;
+}
+
+/* Difference in whole days between two YYYY-MM-DD strings (b - a). */
+function dayDiff(a, b) {
+  return Math.round((Date.parse(b + 'T00:00:00Z') - Date.parse(a + 'T00:00:00Z')) / 86400000);
+}
+
+/* Trim trailing Sat/Sun from a cutoff's END so the label matches how the
+ * client writes it ("June 22 to July 3", not "...to July 5"). Hours are
+ * unaffected: nobody works the weekend anyway, so the totals are identical. */
+function trimWeekendEnd(start, end) {
+  let e = end;
+  let guard = 0;
+  while (e > start && guard < 7) {
+    const dow = phDayOfWeek(e);
+    if (dow !== 0 && dow !== 6) break;
+    e = addDays(e, -1);
+    guard++;
+  }
+  return e;
+}
+
+/* The cutoff containing `dateStr` for this user, or null if unconfigured. */
+function cycleForDate(user, dateStr) {
+  if (!user || !user.cycleAnchor) return null;
+  const anchor = user.cycleAnchor;
+  const freq = user.cycleFrequency || 'biweekly';
+
+  if (freq === 'monthly') {
+    /* Walk month-blocks forward or backward from the anchor until we land on
+     * the block containing dateStr. Bounded so a bad anchor can't hang the UI. */
+    let i = 0;
+    /* Rough starting guess, then correct. */
+    const [ay, am] = anchor.split('-').map(Number);
+    const [dy, dm] = dateStr.split('-').map(Number);
+    i = (dy * 12 + dm) - (ay * 12 + am);
+    for (let guard = 0; guard < 400; guard++) {
+      const s = addMonths(anchor, i);
+      const e = addDays(addMonths(anchor, i + 1), -1);
+      if (dateStr < s) { i--; continue; }
+      if (dateStr > e) { i++; continue; }
+      return { start: s, end: e, rawEnd: e, index: i };
+    }
+    return null;
+  }
+
+  /* biweekly */
+  const diff = dayDiff(anchor, dateStr);
+  const i = Math.floor(diff / 14);
+  const s = addDays(anchor, i * 14);
+  const rawEnd = addDays(s, 13);
+  return { start: s, end: trimWeekendEnd(s, rawEnd), rawEnd, index: i };
+}
+
+/* The cutoff this employee is in RIGHT NOW. */
+function currentCycle(user) {
+  return cycleForDate(user, today());
+}
+
+/* Shift a cycle by n periods (n = -1 -> previous cutoff). */
+function shiftCycle(user, cycle, n) {
+  if (!cycle) return null;
+  const freq = user.cycleFrequency || 'biweekly';
+  const s = freq === 'monthly'
+    ? addMonths(user.cycleAnchor, cycle.index + n)
+    : addDays(user.cycleAnchor, (cycle.index + n) * 14);
+  return cycleForDate(user, s);
+}
+
+function cycleLabel(cycle) {
+  if (!cycle) return '—';
+  return `${fmtFullDate(cycle.start)} to ${fmtFullDate(cycle.end)}`;
+}
+
+/* ============== INVOICE COMPUTATION ==============
+ * Turns raw time entries + holidays into the numbers on the invoice.
+ *
+ *   worked        = sum of workedHours() for every completed entry in range
+ *   holidayHours  = paid-holiday credit for holiday dates the employee did NOT
+ *                   work (if they worked, their real hours already count)
+ *   cap           = the max BILLABLE hours for the cutoff (e.g. 80)
+ *
+ *   billable      = min(worked, cap)          <- what the client approved
+ *   excess        = max(0, worked - cap)      <- NOT approved, NOT paid
+ *
+ * Excess is surfaced on the invoice (struck through) and in the UI so nobody
+ * is surprised, but it contributes ₱0 to the total. Holiday hours are credited
+ * on top of the cap, because a declared holiday isn't the contractor working
+ * unapproved overtime.
+ */
+function computeInvoice(user, start, end) {
+  const entries = D.entries.filter(e =>
+    e.userId === user.id && e.status === 'completed' &&
+    e.date >= start && e.date <= end
+  );
+  const worked = entries.reduce((s, e) => s + workedHours(e), 0);
+  const workedDates = new Set(entries.map(e => e.date));
+
+  /* Paid holidays inside the window that the employee did not actually work. */
+  let holidayHours = 0;
+  const holidayDates = [];
+  let d = start, guard = 0;
+  while (d <= end && guard < 400) {
+    const h = getHolidayOn(user.id, d);
+    if (h && h.paid && !workedDates.has(d)) {
+      holidayHours += h.hours;
+      holidayDates.push({ date: d, name: h.name, hours: h.hours });
+    }
+    d = addDays(d, 1); guard++;
+  }
+
+  const cap = (user.capHours === null || user.capHours === undefined || user.capHours === '')
+    ? null : Number(user.capHours);
+
+  const billable = (cap !== null && worked > cap) ? cap : worked;
+  const excess   = (cap !== null && worked > cap) ? (worked - cap) : 0;
+
+  const rate = Number(user.rate) || 0;
+  const regularAmt = billable * rate;
+  const holidayAmt = holidayHours * rate;
+
+  return {
+    user,
+    start, end,
+    entries,
+    workedHours: round2(worked),
+    regularHours: round2(billable),
+    excessHours: round2(excess),
+    overtimeHours: 0,               /* approved OT is not modelled yet; always 0 */
+    holidayHours: round2(holidayHours),
+    holidayDates,
+    cap,
+    rate,
+    regularAmount: round2(regularAmt),
+    holidayAmount: round2(holidayAmt),
+    total: round2(regularAmt + holidayAmt),
+    daysWorked: workedDates.size
+  };
 }
 
 function toast(msg) {
@@ -2420,12 +3046,16 @@ function renderTimesheet() {
   const entryDates = new Set(entries.map(e=>e.date));
   const workingDays = getWorkingDaysInRange(p.start, p.end);
   const onLeaveRows = [];
+  const holidayRows = [];
   const absentDates = [];
   for (const d of workingDays) {
     if (entryDates.has(d)) continue;
+    /* Precedence: approved leave > holiday > absent */
     const leave = getApprovedLeaveOn(u.id, d);
-    if (leave) onLeaveRows.push({ date: d, type: leave.type });
-    else absentDates.push(d);
+    if (leave) { onLeaveRows.push({ date: d, type: leave.type }); continue; }
+    const hol = getHolidayOn(u.id, d);
+    if (hol) { holidayRows.push({ date: d, name: hol.name, paid: hol.paid, hours: hol.hours }); continue; }
+    absentDates.push(d);
   }
 
   /* Update counters */
@@ -2434,6 +3064,7 @@ function renderTimesheet() {
     const parts = [];
     if (absentDates.length) parts.push(`Absent: <strong style="color:var(--vc-red)">${absentDates.length}</strong>`);
     if (onLeaveRows.length) parts.push(`On leave: <strong style="color:#6B4F95">${onLeaveRows.length}</strong>`);
+    if (holidayRows.length) parts.push(`Holiday: <strong style="color:#8A6100">${holidayRows.length}</strong>`);
     counterEl.innerHTML = parts.join(' · ');
   }
 
@@ -2477,6 +3108,12 @@ function renderTimesheet() {
     clockOut: '—',
     hours: '—',
     statusHtml: `<span class="badge on-leave">On leave · ${r.type}</span>`
+  }))).concat(holidayRows.map(r => ({
+    date: r.date,
+    clockIn: '—',
+    clockOut: '—',
+    hours: r.paid ? `${round2(r.hours)}<br><span style="color:var(--ink-muted);font-size:10px;">holiday</span>` : '—',
+    statusHtml: `<span class="badge holiday">Holiday · ${r.name}</span>${r.paid ? '' : ' <span class="badge out" style="font-size:10px;">unpaid</span>'}`
   })));
   rows.sort((a,b) => b.date.localeCompare(a.date));
 
@@ -2812,6 +3449,8 @@ function switchAdminView(v) {
   if (v === 'approvals') { renderApprovals(); renderLeaveHistory(); }
   if (v === 'coa-approvals') { renderCoaApprovals(); renderCoaHistory(); }
   if (v === 'payroll') renderPayroll();
+  if (v === 'invoices') { renderCutoffs(); renderInvoiceHistory(); }
+  if (v === 'holidays') { populateHolidayEmpSelect(); renderHolidays(); }
 }
 
 function renderAdmin() {
@@ -2894,12 +3533,25 @@ function renderEmployeesTable() {
     const flexBtn = u.flexEnabled
       ? `<button class="btn btn-sm" style="background:var(--vc-green);border-color:var(--vc-green);" onclick="toggleFlexEnabled('${u.id}')" title="Employee can pause/resume their shift. Click to disable.">Flex on</button>`
       : `<button class="btn btn-ghost btn-sm" onclick="toggleFlexEnabled('${u.id}')" title="Allow this employee to pause and resume work hours.">Enable flex</button>`;
+    /* Billing cycle: show the live cutoff if configured, else prompt to set it. */
+    const cyc = currentCycle(u);
+    let cycleCell;
+    if (cyc) {
+      const capTxt = (u.capHours === null) ? 'no cap' : `cap ${round2(u.capHours)} hrs`;
+      const freqTxt = (u.cycleFrequency === 'monthly') ? 'Monthly' : 'Bi-weekly';
+      cycleCell = `<span style="font-size:11px; font-weight:600; color:var(--vc-navy);">${freqTxt}</span>
+        <br><span style="font-size:10px; color:var(--ink-muted);">${fmtDate(cyc.start)} – ${fmtDate(cyc.end)} · ${capTxt}</span>
+        <br><button class="btn btn-ghost btn-sm" style="padding:2px 6px; font-size:10px; margin-top:3px;" onclick="openCycleModal('${u.id}')">Edit cutoff</button>`;
+    } else {
+      cycleCell = `<button class="btn btn-sm" onclick="openCycleModal('${u.id}')">Set cutoff</button>`;
+    }
     return `<tr>
       <td><strong style="color:var(--ink)">${u.name}</strong></td>
       <td class="mono">${u.username}</td>
       <td><span style="display:inline-block; padding:2px 8px; border-radius:3px; font-size:11px; font-weight:600; color:white; background:${statusBadgeColor}; cursor:pointer;" onclick="toggleEmploymentStatus('${u.id}')" title="Click to toggle">${statusLabel}</span></td>
       <td>${leavesCell}</td>
       <td class="mono">${currency(u.rate)}/hr</td>
+      <td>${cycleCell}</td>
       <td class="mono">${round2(hrs)} hrs</td>
       <td class="mono"><strong style="color:var(--vc-navy)">${currency(hrs*u.rate)}</strong></td>
       <td><div class="actions-cell">
@@ -3082,6 +3734,7 @@ function renderAdminTimesheets() {
 
   let absentRows = [];
   let onLeaveRows = [];
+  let holidayRows = [];
   const workingDays = (periodKey === 'all') ? [] : getWorkingDaysInRange(p.start, p.end);
   const targetEmployees = empId === 'all'
     ? D.users.filter(u => u.role === 'employee')
@@ -3091,12 +3744,19 @@ function renderAdminTimesheets() {
     const userEntryDates = new Set(entries.filter(e => e.userId===u.id).map(e=>e.date));
     for (const d of workingDays) {
       if (userEntryDates.has(d)) continue;
+      /* Precedence: approved leave > holiday > absent. A holiday declared by
+       * the client (e.g. 4th of July) must not read as an absence. */
       const leave = getApprovedLeaveOn(u.id, d);
       if (leave) {
         onLeaveRows.push({ userId: u.id, userName: u.name, date: d, leaveType: leave.type });
-      } else {
-        absentRows.push({ userId: u.id, userName: u.name, date: d });
+        continue;
       }
+      const hol = getHolidayOn(u.id, d);
+      if (hol) {
+        holidayRows.push({ userId: u.id, userName: u.name, date: d, holName: hol.name, paid: hol.paid, hours: hol.hours });
+        continue;
+      }
+      absentRows.push({ userId: u.id, userName: u.name, date: d });
     }
   }
 
@@ -3105,6 +3765,7 @@ function renderAdminTimesheets() {
     const parts = [];
     if (absentRows.length) parts.push(`Absent: <strong style="color:var(--vc-red)">${absentRows.length}</strong>`);
     if (onLeaveRows.length) parts.push(`On leave: <strong style="color:#6B4F95">${onLeaveRows.length}</strong>`);
+    if (holidayRows.length) parts.push(`Holiday: <strong style="color:#8A6100">${holidayRows.length}</strong>`);
     counterEl.innerHTML = parts.join(' · ');
   }
 
@@ -3114,7 +3775,8 @@ function renderAdminTimesheets() {
   });
   const absentTyped = absentRows.map(a => ({ type: 'absent', date: a.date, userName: a.userName }));
   const onLeaveTyped = onLeaveRows.map(a => ({ type: 'on-leave', date: a.date, userName: a.userName, leaveType: a.leaveType }));
-  const allRows = presentRows.concat(absentTyped, onLeaveTyped);
+  const holidayTyped = holidayRows.map(a => ({ type: 'holiday', date: a.date, userName: a.userName, holName: a.holName, paid: a.paid, hours: a.hours }));
+  const allRows = presentRows.concat(absentTyped, onLeaveTyped, holidayTyped);
   allRows.sort((a,b) => b.date.localeCompare(a.date) || (a.userName||a.user?.name||'').localeCompare(b.userName||b.user?.name||''));
 
   const tbody = document.getElementById('admin-ts-rows');
@@ -3122,12 +3784,27 @@ function renderAdminTimesheets() {
 
   tbody.innerHTML = allRows.map(r => {
     if (r.type === 'absent') {
+      /* Inline escape hatch: if this "absence" was actually a client-declared
+       * holiday, the admin can retag it right here without leaving the page. */
       return `<tr style="background:#FDF7F7;">
         <td>${r.userName}</td>
         <td>${fmtDate(r.date)}</td>
         <td class="mono" style="color:var(--ink-muted);">—</td>
         <td class="mono" style="color:var(--ink-muted);">—</td>
         <td><span class="badge absent">Absent</span></td>
+        <td><button class="btn btn-ghost btn-sm" style="font-size:10px;" onclick="markAsHoliday('${r.date}')" title="Retag this day as a client-declared holiday">Mark holiday</button></td>
+      </tr>`;
+    }
+    if (r.type === 'holiday') {
+      const credit = r.paid
+        ? `<br><span style="color:var(--ink-muted); font-size:10px;">+${round2(r.hours)} hrs credited</span>`
+        : `<br><span style="color:var(--ink-muted); font-size:10px;">unpaid · excused</span>`;
+      return `<tr style="background:#FFFBF2;">
+        <td>${r.userName}</td>
+        <td>${fmtDate(r.date)}</td>
+        <td class="mono" style="color:var(--ink-muted);">—</td>
+        <td class="mono" style="color:var(--ink-muted);">—</td>
+        <td><span class="badge holiday">Holiday · ${r.holName}</span>${credit}</td>
         <td></td>
       </tr>`;
     }
@@ -3483,9 +4160,123 @@ function renderCoaHistory() {
   }).join('');
 }
 
+/* ============== PAYROLL ==============
+ * Two filters, both optional:
+ *   period    — the canned ranges, plus a CUSTOM from/to range
+ *   employees — a multi-select; empty set means "everyone"
+ *
+ * PAYROLL_EMP_FILTER holds the currently applied selection as a Set of user
+ * ids. It is intentionally separate from the checkbox state in the dropdown,
+ * so ticking boxes doesn't re-render the table until "Apply" is pressed.
+ */
+let PAYROLL_EMP_FILTER = new Set();   /* empty = all employees */
+
+/* The canned periodRange() reads its custom dates from the timesheet inputs.
+ * Payroll has its own pair, so it needs its own resolver. */
+function payrollRange() {
+  const key = document.getElementById('payroll-period').value;
+  if (key !== 'custom') return periodRange(key);
+
+  const t = today();
+  const fromEl = document.getElementById('payroll-custom-from');
+  const toEl = document.getElementById('payroll-custom-to');
+  let start = (fromEl && fromEl.value) || t.slice(0, 8) + '01';
+  let end = (toEl && toEl.value) || t;
+  if (start > end) { const tmp = start; start = end; end = tmp; }
+  return { start, end };
+}
+
+function onPayrollPeriodChange() {
+  const custom = document.getElementById('payroll-period').value === 'custom';
+  const from = document.getElementById('payroll-custom-from');
+  const to = document.getElementById('payroll-custom-to');
+  from.style.display = custom ? '' : 'none';
+  to.style.display = custom ? '' : 'none';
+  if (custom && !from.value && !to.value) {
+    /* Seed the range with the current month so the table isn't empty. */
+    const p = periodRange('this-month');
+    from.value = p.start;
+    to.value = p.end;
+  }
+  renderPayroll();
+}
+
+/* ---- Employee multi-select ---- */
+function togglePayrollEmpMenu(ev) {
+  if (ev) ev.stopPropagation();
+  const menu = document.getElementById('payroll-emp-menu');
+  const opening = !menu.classList.contains('active');
+  if (opening) buildPayrollEmpMenu();
+  menu.classList.toggle('active', opening);
+}
+
+function buildPayrollEmpMenu() {
+  const list = document.getElementById('payroll-emp-list');
+  const employees = D.users.filter(u => u.role === 'employee')
+    .slice().sort((a, b) => a.name.localeCompare(b.name));
+  if (employees.length === 0) {
+    list.innerHTML = '<div class="empty" style="padding:14px;">No employees.</div>';
+    return;
+  }
+  list.innerHTML = employees.map(u => {
+    /* An empty filter means "all", so show every box ticked in that case. */
+    const on = PAYROLL_EMP_FILTER.size === 0 || PAYROLL_EMP_FILTER.has(u.id);
+    return `<label>
+      <input type="checkbox" class="payroll-emp-cb" value="${u.id}" ${on ? 'checked' : ''}>
+      <span>${u.name}</span>
+    </label>`;
+  }).join('');
+}
+
+function payrollEmpSelectAll(on) {
+  document.querySelectorAll('.payroll-emp-cb').forEach(cb => { cb.checked = on; });
+}
+
+function applyPayrollEmpFilter() {
+  const boxes = Array.from(document.querySelectorAll('.payroll-emp-cb'));
+  const picked = boxes.filter(b => b.checked).map(b => b.value);
+  const total = boxes.length;
+
+  /* "All ticked" and "none ticked" both collapse to the same thing: no filter.
+   * Treating an empty selection as "everyone" is friendlier than showing an
+   * empty table when someone clears the list by accident. */
+  PAYROLL_EMP_FILTER = (picked.length === 0 || picked.length === total)
+    ? new Set()
+    : new Set(picked);
+
+  document.getElementById('payroll-emp-menu').classList.remove('active');
+  updatePayrollEmpLabel();
+  renderPayroll();
+}
+
+function updatePayrollEmpLabel() {
+  const el = document.getElementById('payroll-emp-label');
+  if (!el) return;
+  const n = PAYROLL_EMP_FILTER.size;
+  if (n === 0) { el.textContent = 'All'; return; }
+  if (n === 1) {
+    const u = D.users.find(x => x.id === Array.from(PAYROLL_EMP_FILTER)[0]);
+    el.textContent = u ? u.name : '1 selected';
+    return;
+  }
+  el.textContent = n + ' selected';
+}
+
+/* Close the dropdown on any outside click. */
+document.addEventListener('click', (ev) => {
+  const menu = document.getElementById('payroll-emp-menu');
+  const btn = document.getElementById('payroll-emp-btn');
+  if (!menu || !menu.classList.contains('active')) return;
+  if (menu.contains(ev.target) || (btn && btn.contains(ev.target))) return;
+  menu.classList.remove('active');
+});
+
 function payrollData() {
-  const p = periodRange(document.getElementById('payroll-period').value);
-  const employees = D.users.filter(u => u.role==='employee');
+  const p = payrollRange();
+  let employees = D.users.filter(u => u.role === 'employee');
+  if (PAYROLL_EMP_FILTER.size > 0) {
+    employees = employees.filter(u => PAYROLL_EMP_FILTER.has(u.id));
+  }
   return employees.map(u => {
     const entries = D.entries.filter(e => e.userId===u.id && e.status==='completed' && e.date>=p.start && e.date<=p.end);
     const hrs = entries.reduce((s,e)=>s+workedHours(e),0);
@@ -3495,9 +4286,18 @@ function payrollData() {
 }
 
 function renderPayroll() {
+  updatePayrollEmpLabel();
+  const p = payrollRange();
+  const sub = document.getElementById('payroll-range-note');
+  if (sub) sub.textContent = `${fmtFullDate(p.start)} – ${fmtFullDate(p.end)}`;
+
   const data = payrollData();
   const tbody = document.getElementById('payroll-rows');
-  if (data.length === 0) { tbody.innerHTML = '<tr><td colspan="5" class="empty">No employees.</td></tr>'; return; }
+  if (data.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" class="empty">No employees match this filter.</td></tr>';
+    document.getElementById('payroll-foot').innerHTML = '';
+    return;
+  }
   tbody.innerHTML = data.map(d => `<tr>
     <td><strong style="color:var(--ink)">${d.user.name}</strong></td>
     <td class="mono">${d.days}</td>
@@ -3517,10 +4317,14 @@ function renderPayroll() {
 function exportPayrollCSV() {
   const data = payrollData();
   const period = document.getElementById('payroll-period').value;
-  const p = periodRange(period);
+  const p = payrollRange();
+  const scope = PAYROLL_EMP_FILTER.size === 0
+    ? 'All employees'
+    : data.map(d => d.user.name).join('; ');
   const rows = [
     ['VeeCare Staffing Solutions PH — Payroll Export'],
     ['Period', `${p.start} to ${p.end}`],
+    ['Employees', scope],
     ['Generated', new Date().toLocaleString('en-US', {timeZone: ACTIVE_TZ}) + ' ' + tzLabel(ACTIVE_TZ)],
     [],
     ['Employee', 'Username', 'Days Worked', 'Total Hours', 'Hourly Rate (PHP)', 'Gross Pay (PHP)']
@@ -3538,6 +4342,713 @@ function exportPayrollCSV() {
   a.click();
   URL.revokeObjectURL(url);
   toast('CSV downloaded');
+}
+
+/* ============== BILLING CYCLE CONFIG (admin) ============== */
+function openCycleModal(uid) {
+  const u = D.users.find(x => x.id === uid);
+  if (!u) return;
+  document.getElementById('cyc-uid').value = uid;
+  document.getElementById('cyc-emp-name').textContent = u.name;
+  document.getElementById('cyc-freq').value = u.cycleFrequency || 'biweekly';
+  document.getElementById('cyc-anchor').value = u.cycleAnchor || '';
+  document.getElementById('cyc-cap').value = (u.capHours === null) ? '' : u.capHours;
+  document.getElementById('cyc-bank').value = u.bankName || '';
+  document.getElementById('cyc-bank-name').value = u.bankAccountName || u.name;
+  document.getElementById('cyc-bank-no').value = u.bankAccountNo || '';
+  document.getElementById('cyc-bank-email').value = u.bankEmail || u.username || '';
+  document.getElementById('cyc-bank-addr').value = u.bankAddress || '';
+  previewCycle();
+  document.getElementById('cycle-modal').classList.add('active');
+}
+function closeCycleModal() { document.getElementById('cycle-modal').classList.remove('active'); }
+
+/* Live preview so the admin can see the derived cutoffs before saving. */
+function previewCycle() {
+  const el = document.getElementById('cyc-preview');
+  const anchor = document.getElementById('cyc-anchor').value;
+  const freq = document.getElementById('cyc-freq').value;
+  if (!anchor) { el.innerHTML = 'Pick a cutoff start date to preview the schedule.'; return; }
+  /* Build a throwaway user object just to reuse the engine. */
+  const fake = { id: '_preview', cycleAnchor: anchor, cycleFrequency: freq };
+  const cur = cycleForDate(fake, today()) || cycleForDate(fake, anchor);
+  if (!cur) { el.innerHTML = 'Could not derive a schedule from that date.'; return; }
+  const nxt = shiftCycle(fake, cur, 1);
+  const prv = shiftCycle(fake, cur, -1);
+  el.innerHTML = `
+    <div style="font-weight:600; margin-bottom:6px;">Derived schedule</div>
+    <div style="color:var(--ink-soft);">Previous: ${cycleLabel(prv)}</div>
+    <div style="font-weight:600; color:var(--vc-navy);">Current: ${cycleLabel(cur)}</div>
+    <div style="color:var(--ink-soft);">Next: ${cycleLabel(nxt)}</div>`;
+}
+
+async function saveCycle() {
+  const uid = document.getElementById('cyc-uid').value;
+  const u = D.users.find(x => x.id === uid);
+  if (!u) return;
+  const anchor = document.getElementById('cyc-anchor').value || null;
+  const freq = document.getElementById('cyc-freq').value;
+  const capRaw = document.getElementById('cyc-cap').value;
+  const cap = (capRaw === '' || capRaw === null) ? null : Number(capRaw);
+  if (cap !== null && (!isFinite(cap) || cap <= 0)) { toast('Cap must be a positive number, or blank for no cap'); return; }
+
+  const patch = {
+    cycle_anchor: anchor,
+    cycle_frequency: freq,
+    cap_hours: cap,
+    bank_name: document.getElementById('cyc-bank').value.trim() || null,
+    bank_account_name: document.getElementById('cyc-bank-name').value.trim() || null,
+    bank_account_no: document.getElementById('cyc-bank-no').value.trim() || null,
+    bank_email: document.getElementById('cyc-bank-email').value.trim() || null,
+    bank_address: document.getElementById('cyc-bank-addr').value.trim() || null
+  };
+  const { error } = await sb.from('profiles').update(patch).eq('id', uid);
+  if (error) { toast('Save failed: ' + error.message); return; }
+
+  u.cycleAnchor = anchor;
+  u.cycleFrequency = freq;
+  u.capHours = cap;
+  u.bankName = patch.bank_name || '';
+  u.bankAccountName = patch.bank_account_name || '';
+  u.bankAccountNo = patch.bank_account_no || '';
+  u.bankEmail = patch.bank_email || '';
+  u.bankAddress = patch.bank_address || '';
+
+  closeCycleModal();
+  toast(`Billing cycle saved for ${u.name}`);
+  renderEmployeesTable();
+}
+
+/* ============== HOLIDAYS (admin) ============== */
+function populateHolidayEmpSelect() {
+  const sel = document.getElementById('hol-user');
+  if (!sel) return;
+  const employees = D.users.filter(u => u.role === 'employee');
+  sel.innerHTML = '<option value="">All employees (company-wide)</option>' +
+    employees.map(u => `<option value="${u.id}">${u.name}</option>`).join('');
+}
+function toggleHolHours() {
+  const paid = document.getElementById('hol-paid').value === '1';
+  document.getElementById('hol-hours-field').style.display = paid ? '' : 'none';
+}
+function openHolidayModal(presetDate) {
+  populateHolidayEmpSelect();
+  document.getElementById('hol-date').value = presetDate || today();
+  document.getElementById('hol-name').value = '';
+  document.getElementById('hol-user').value = '';
+  document.getElementById('hol-paid').value = '1';
+  document.getElementById('hol-hours').value = 8;
+  toggleHolHours();
+  document.getElementById('holiday-modal').classList.add('active');
+}
+function closeHolidayModal() { document.getElementById('holiday-modal').classList.remove('active'); }
+
+/* Called from the "Mark holiday" button on an Absent row in the admin timesheet. */
+function markAsHoliday(dateStr) {
+  switchAdminView('holidays');
+  openHolidayModal(dateStr);
+}
+
+async function saveHoliday() {
+  const date = document.getElementById('hol-date').value;
+  const name = document.getElementById('hol-name').value.trim();
+  const userId = document.getElementById('hol-user').value || null;
+  const paid = document.getElementById('hol-paid').value === '1';
+  const hours = paid ? Number(document.getElementById('hol-hours').value) : 0;
+
+  if (!date) { toast('Pick a date'); return; }
+  if (!name) { toast('Give the holiday a name'); return; }
+  if (paid && (!isFinite(hours) || hours <= 0)) { toast('Credited hours must be greater than 0'); return; }
+
+  /* Guard the unique indexes so the user gets a readable message, not a 23505. */
+  const dupe = D.holidays.find(h => h.date === date && (h.userId || null) === userId);
+  if (dupe) { toast('A holiday already exists for that date and scope'); return; }
+
+  const { data, error } = await sb.from('holidays').insert({
+    holiday_date: date,
+    name,
+    user_id: userId,
+    paid,
+    hours,
+    created_by: D.session
+  }).select().single();
+  if (error) { toast('Could not add holiday: ' + error.message); return; }
+
+  D.holidays.push(holidayFromRow(data));
+  closeHolidayModal();
+  toast('Holiday added');
+  renderHolidays();
+  renderAdminTimesheets();
+}
+
+async function deleteHoliday(id) {
+  const h = D.holidays.find(x => x.id === id);
+  if (!h) return;
+  if (!confirm(`Remove "${h.name}" on ${fmtDate(h.date)}? Days that were tagged Holiday will go back to being tagged Absent.`)) return;
+  const { error } = await sb.from('holidays').delete().eq('id', id);
+  if (error) { toast('Delete failed: ' + error.message); return; }
+  D.holidays = D.holidays.filter(x => x.id !== id);
+  toast('Holiday removed');
+  renderHolidays();
+  renderAdminTimesheets();
+}
+
+function renderHolidays() {
+  const tbody = document.getElementById('holiday-rows');
+  if (!tbody) return;
+  const rows = D.holidays.slice().sort((a, b) => b.date.localeCompare(a.date));
+  if (rows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty">No holidays yet. Add one so a client-declared non-working day is not tagged as an absence.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(h => {
+    const who = h.userId
+      ? (D.users.find(u => u.id === h.userId)?.name || 'Unknown')
+      : '<span style="color:var(--ink-muted);">All employees</span>';
+    const paid = h.paid
+      ? '<span class="badge approved">Paid</span>'
+      : '<span class="badge out">Unpaid</span>';
+    return `<tr>
+      <td>${fmtDate(h.date)}</td>
+      <td><strong style="color:var(--ink)">${h.name}</strong></td>
+      <td>${who}</td>
+      <td>${paid}</td>
+      <td class="mono">${h.paid ? round2(h.hours) + ' hrs' : '—'}</td>
+      <td><button class="btn btn-danger btn-sm" onclick="deleteHoliday('${h.id}')">Remove</button></td>
+    </tr>`;
+  }).join('');
+}
+
+/* ============== INVOICES (admin) ============== */
+
+/* Row per employee showing their live cutoff and what it would bill today. */
+function renderCutoffs() {
+  const tbody = document.getElementById('cutoff-rows');
+  if (!tbody) return;
+  const employees = D.users.filter(u => u.role === 'employee');
+  if (employees.length === 0) { tbody.innerHTML = '<tr><td colspan="7" class="empty">No employees.</td></tr>'; return; }
+
+  tbody.innerHTML = employees.map(u => {
+    const cyc = currentCycle(u);
+    if (!cyc) {
+      return `<tr>
+        <td><strong style="color:var(--ink)">${u.name}</strong></td>
+        <td colspan="5" style="color:var(--ink-muted);">No cutoff configured.</td>
+        <td><div class="actions-cell">
+          <button class="btn btn-ghost btn-sm" onclick="switchAdminView('employees')">Set cutoff</button>
+          <button class="btn btn-sm" onclick="openInvoiceBuilder('${u.id}', 0, true)" title="Invoice a one-off date range without configuring a cutoff">Custom…</button>
+        </div></td>
+      </tr>`;
+    }
+    const inv = computeInvoice(u, cyc.start, cyc.end);
+    const freqTxt = (u.cycleFrequency === 'monthly') ? 'Monthly' : 'Bi-weekly';
+    const capTxt = inv.cap === null ? '—' : round2(inv.cap) + ' hrs';
+
+    let hoursCell = `<span class="mono">${inv.workedHours}</span>`;
+    if (inv.excessHours > 0) {
+      hoursCell += `<br><span class="badge capped" style="font-size:9px;" title="Worked beyond the ${round2(inv.cap)}-hr cap. Not approved by the client, so not billed.">+${inv.excessHours} excess · unpaid</span>`;
+    }
+    if (inv.holidayHours > 0) {
+      hoursCell += `<br><span class="badge holiday" style="font-size:9px;">+${inv.holidayHours} holiday</span>`;
+    }
+
+    const billable = round2(inv.regularHours + inv.holidayHours);
+    return `<tr>
+      <td><strong style="color:var(--ink)">${u.name}</strong></td>
+      <td>${freqTxt}</td>
+      <td>${fmtDate(cyc.start)} – ${fmtDate(cyc.end)}</td>
+      <td>${hoursCell}</td>
+      <td class="mono">${capTxt}</td>
+      <td class="mono"><strong style="color:var(--vc-navy)">${billable} hrs</strong><br><span style="font-size:10px;color:var(--ink-muted);">${currency(inv.total)}</span></td>
+      <td><div class="actions-cell">
+        <button class="btn btn-sm" onclick="openInvoiceBuilder('${u.id}', 0)">Invoice this cutoff</button>
+        <button class="btn btn-ghost btn-sm" onclick="openInvoiceBuilder('${u.id}', -1)" title="Generate for the cutoff that just ended">Previous</button>
+        <button class="btn btn-ghost btn-sm" onclick="openInvoiceBuilder('${u.id}', 0, true)" title="Override the cutoff dates and the hours/rate">Custom…</button>
+      </div></td>
+    </tr>`;
+  }).join('');
+}
+
+/* The invoice currently open in the preview modal (held so Save can persist it). */
+let PENDING_INVOICE = null;
+
+/* ============== INVOICE BUILDER ==============
+ * Sits between "pick an employee" and "here is the printable invoice".
+ *
+ * Everything on it is an override, not a replacement: the computed figures are
+ * the defaults, and the admin can change any of them. Two override layers:
+ *
+ *   1. PERIOD  — by default the configured cutoff (or the previous one). The
+ *      admin can pick any from/to range instead. Changing the dates recomputes
+ *      the hours from the actual time entries in that window, which is the
+ *      whole point of the override: an off-cycle or partial invoice.
+ *
+ *   2. HOURS + RATE — free-text. The amount column is always derived
+ *      (hours x rate), never typed, so the arithmetic can't be wrong. Any field
+ *      the admin touches is flagged as edited, and the originally-computed
+ *      value is kept visible underneath so nobody loses the audit trail.
+ *
+ * IB holds the builder's working state.
+ */
+let IB = null;
+
+function openInvoiceBuilder(uid, offset, custom) {
+  const u = D.users.find(x => x.id === uid);
+  if (!u) return;
+
+  let start, end;
+  const cyc = currentCycle(u);
+  if (cyc) {
+    const target = offset ? shiftCycle(u, cyc, offset) : cyc;
+    start = target.start;
+    end = target.end;
+  } else {
+    /* No cutoff configured — fall back to the current month so the custom
+     * range has sensible defaults to start from. */
+    const p = periodRange('this-month');
+    start = p.start;
+    end = p.end;
+    custom = true;
+  }
+
+  IB = { userId: uid, start, end, dirty: {} };
+
+  document.getElementById('ib-emp-name').textContent = u.name;
+  document.getElementById('ib-from').value = start;
+  document.getElementById('ib-to').value = end;
+
+  /* The "Custom…" button opens with the date row already expanded. */
+  setIbDatesOpen(!!custom);
+
+  recomputeBuilder(true);
+  document.getElementById('invoice-builder-modal').classList.add('active');
+}
+
+function closeInvoiceBuilder() {
+  document.getElementById('invoice-builder-modal').classList.remove('active');
+  IB = null;
+}
+
+function setIbDatesOpen(open) {
+  document.getElementById('ib-dates').style.display = open ? '' : 'none';
+  document.getElementById('ib-dates-toggle').textContent = open ? 'Use configured cutoff' : 'Override dates…';
+}
+
+function toggleIbDates() {
+  const open = document.getElementById('ib-dates').style.display === 'none';
+  if (!open) {
+    /* Snapping back to the configured cutoff. */
+    const u = D.users.find(x => x.id === IB.userId);
+    const cyc = currentCycle(u);
+    if (cyc) {
+      IB.start = cyc.start;
+      IB.end = cyc.end;
+      document.getElementById('ib-from').value = cyc.start;
+      document.getElementById('ib-to').value = cyc.end;
+      onIbDateChange();
+    }
+  }
+  setIbDatesOpen(open);
+}
+
+/* Changing the window recomputes the hours from real entries in that range.
+ * Any manual hour/rate override is discarded, because it was entered against
+ * a different period and silently carrying it forward would be misleading. */
+function onIbDateChange() {
+  let from = document.getElementById('ib-from').value;
+  let to = document.getElementById('ib-to').value;
+  if (!from || !to) return;
+  if (from > to) { const t = from; from = to; to = t; }
+  IB.start = from;
+  IB.end = to;
+  IB.dirty = {};
+  recomputeBuilder(true);
+}
+
+/* reseed=true  -> reset the inputs to the freshly computed values
+ * reseed=false -> keep whatever is in the inputs, just re-derive the amounts */
+function recomputeBuilder(reseed) {
+  const u = D.users.find(x => x.id === IB.userId);
+  const computed = computeInvoice(u, IB.start, IB.end);
+  IB.computed = computed;
+
+  if (reseed) {
+    /* Reseeding IS a reset: the inputs go back to the computed figures, so any
+     * previous override is gone and the "edited" highlight must go with it. */
+    IB.dirty = {};
+    const seed = {
+      'ib-rate': computed.rate,
+      'ib-regular': computed.regularHours,
+      'ib-overtime': computed.overtimeHours,
+      'ib-holiday': computed.holidayHours
+    };
+    for (const id in seed) {
+      const el = document.getElementById(id);
+      el.value = seed[id];
+      el.classList.remove('dirty');
+    }
+  }
+  refreshBuilderTotals();
+}
+
+function ibNum(id) {
+  const v = parseFloat(document.getElementById(id).value);
+  return isFinite(v) && v >= 0 ? v : 0;
+}
+
+/* Mark a field as edited (blue) when it diverges from the computed default,
+ * and recompute the amounts. Called on every keystroke. */
+function onIbFieldChange(field) {
+  const c = IB.computed;
+  const map = {
+    'ib-rate': c.rate,
+    'ib-regular': c.regularHours,
+    'ib-overtime': c.overtimeHours,
+    'ib-holiday': c.holidayHours
+  };
+  const el = document.getElementById(field);
+  const edited = round2(ibNum(field)) !== round2(map[field]);
+  IB.dirty[field] = edited;
+  el.classList.toggle('dirty', edited);
+  refreshBuilderTotals();
+}
+
+function refreshBuilderTotals() {
+  const rate = ibNum('ib-rate');
+  const reg = ibNum('ib-regular');
+  const ot = ibNum('ib-overtime');
+  const hol = ibNum('ib-holiday');
+
+  const regAmt = round2(reg * rate);
+  const otAmt = round2(ot * rate);
+  const holAmt = round2(hol * rate);
+  const total = round2(regAmt + otAmt + holAmt);
+
+  document.getElementById('ib-regular-amt').textContent = currency(regAmt);
+  document.getElementById('ib-overtime-amt').textContent = currency(otAmt);
+  document.getElementById('ib-holiday-amt').textContent = currency(holAmt);
+  document.getElementById('ib-total-amt').textContent = currency(total);
+  document.getElementById('ib-total-hours').textContent = round2(reg + ot + hol);
+
+  /* Context strip: what the raw data actually says, so an override is always
+   * visible next to the truth it's overriding. */
+  const c = IB.computed;
+  const bits = [`Worked: <strong>${c.workedHours}</strong> hrs over ${c.daysWorked} day${c.daysWorked === 1 ? '' : 's'}`];
+  if (c.cap !== null) bits.push(`Cap: <strong>${round2(c.cap)}</strong> hrs`);
+  if (c.excessHours > 0) bits.push(`<span style="color:var(--vc-red);">Excess: <strong>${c.excessHours}</strong> hrs (unbilled)</span>`);
+  if (c.holidayHours > 0) bits.push(`<span style="color:#8A6100;">Holiday: <strong>${c.holidayHours}</strong> hrs</span>`);
+  document.getElementById('ib-context').innerHTML = bits.join(' &nbsp;·&nbsp; ');
+
+  const anyDirty = Object.values(IB.dirty).some(Boolean);
+  document.getElementById('ib-dirty-note').style.display = anyDirty ? '' : 'none';
+}
+
+/* Hand the (possibly overridden) figures to the printable invoice. */
+function buildInvoiceFromBuilder() {
+  const u = D.users.find(x => x.id === IB.userId);
+  const c = IB.computed;
+
+  const rate = ibNum('ib-rate');
+  const regular = ibNum('ib-regular');
+  const overtime = ibNum('ib-overtime');
+  const holiday = ibNum('ib-holiday');
+  const regAmt = round2(regular * rate);
+  const holAmt = round2(holiday * rate);
+  const otAmt = round2(overtime * rate);
+
+  const overridden = Object.values(IB.dirty).some(Boolean);
+
+  return {
+    user: u,
+    start: IB.start,
+    end: IB.end,
+    entries: c.entries,
+    workedHours: c.workedHours,
+    regularHours: round2(regular),
+    overtimeHours: round2(overtime),
+    holidayHours: round2(holiday),
+    /* If the admin manually raised the billed hours, the "excess" framing no
+     * longer applies to whatever they chose to bill — so only carry the excess
+     * through when the regular-hours figure was left untouched. */
+    excessHours: IB.dirty['ib-regular'] ? 0 : c.excessHours,
+    holidayDates: c.holidayDates,
+    cap: c.cap,
+    rate,
+    regularAmount: regAmt,
+    holidayAmount: holAmt,
+    total: round2(regAmt + otAmt + holAmt),
+    daysWorked: c.daysWorked,
+    overridden
+  };
+}
+
+function previewFromBuilder() {
+  if (!IB) return;
+  const inv = buildInvoiceFromBuilder();
+  closeInvoiceBuilder();
+  openInvoicePreview(inv, null);
+}
+
+/* Sequential invoice number, zero-padded like the sample ("001"). */
+function nextInvoiceNo() {
+  const nums = D.invoices
+    .map(i => parseInt(String(i.invoiceNo).replace(/\D/g, ''), 10))
+    .filter(n => isFinite(n));
+  const next = (nums.length ? Math.max(...nums) : 0) + 1;
+  return String(next).padStart(3, '0');
+}
+
+/* Renders the printable invoice. `existing` is a saved invoice row when we're
+ * re-opening one from history (so the snapshot, not today's numbers, is shown). */
+function openInvoicePreview(inv, existing) {
+  const u = inv.user;
+  const invoiceNo = existing ? existing.invoiceNo : nextInvoiceNo();
+  const invoiceDate = existing ? existing.invoiceDate : today();
+
+  /* When re-opening a saved invoice, trust the snapshot. */
+  const regular  = existing ? existing.regularHours  : inv.regularHours;
+  const overtime = existing ? existing.overtimeHours : inv.overtimeHours;
+  const holiday  = existing ? existing.holidayHours  : inv.holidayHours;
+  const excess   = existing ? existing.excessHours   : inv.excessHours;
+  const rate     = existing ? existing.rate          : inv.rate;
+  const total    = existing ? existing.totalAmount   : inv.total;
+
+  const regAmt = round2(regular * rate);
+  const otAmt  = round2(overtime * rate);
+  const holAmt = round2(holiday * rate);
+  const billedHours = round2(regular + overtime + holiday);
+
+  const logo = document.querySelector('.topbar-logo')?.src || '';
+
+  /* Excess is shown, struck through, so the contractor sees it was recorded —
+   * but it adds ₱0 because the client never approved it. */
+  const excessRow = excess > 0 ? `
+    <tr>
+      <td class="lab" style="color:var(--vc-red);">EXCESS HOURS <small style="font-weight:400; display:block; font-size:9px; color:var(--ink-muted);">not approved — not billed</small></td>
+      <td class="mono">${currency(rate)}</td>
+      <td class="mono"><span class="inv-strike">${excess}</span></td>
+      <td class="mono">0.00</td>
+      <td></td>
+    </tr>` : '';
+
+  const holidayNote = inv.holidayDates && inv.holidayDates.length
+    ? `<div class="inv-note">Holiday hours cover: ${inv.holidayDates.map(h => `${fmtDate(h.date)} — ${h.name} (${round2(h.hours)} hrs)`).join('; ')}.</div>`
+    : '';
+  const capNote = (inv.cap !== null && excess > 0)
+    ? `<div class="inv-note">Billable hours are capped at ${round2(inv.cap)} for this cutoff. ${excess} hour${excess === 1 ? '' : 's'} worked beyond the cap ${excess === 1 ? 'was' : 'were'} not approved by the client and ${excess === 1 ? 'is' : 'are'} therefore unpaid.</div>`
+    : '';
+
+  document.getElementById('invoice-print').innerHTML = `
+    <div class="inv-sheet">
+      <div class="inv-head">${logo ? `<img src="${logo}" alt="VeeCare Staffing Solutions PH">` : '<div style="font-size:22px;font-weight:800;color:var(--vc-green);">VeeCare</div>'}</div>
+      <div class="inv-rule"></div>
+      <div class="inv-title">Invoice Summary Report</div>
+      <div class="inv-rule"></div>
+
+      <div class="inv-meta">
+        <div class="inv-billto">
+          <b>Bill To:</b>
+          <div>VeeCare Staffing Solutions PH</div>
+          <div>CVS Homes 1, Imelda Avenue, Cainta Rizal</div>
+        </div>
+        <div class="inv-numbers">
+          <div class="r"><span>Invoice Date :</span><span>${fmtFullDate(invoiceDate)}</span></div>
+          <div class="r"><span>Invoice Number :</span><span>${invoiceNo}</span></div>
+          <div class="inv-balance">
+            <span class="lbl">BALANCE DUE <i>(in PHP)</i></span>
+            <span>${currency(total)}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="inv-desc">
+        DESCRIPTION: ${u.name} - ${billedHours} Hours - ${fmtFullDate(inv.start)} to ${fmtFullDate(inv.end)}
+      </div>
+      <table class="inv-table">
+        <thead>
+          <tr>
+            <th style="width:30%;"></th>
+            <th>PHP RATE<small>(HOURLY)</small></th>
+            <th>HOURS<br>WORKED</th>
+            <th>PHP<br>AMOUNT</th>
+            <th style="width:12%;"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="lab">REGULAR HOURS</td>
+            <td class="mono">${currency(rate)}</td>
+            <td class="mono">${regular}</td>
+            <td class="mono">${currency(regAmt)}</td>
+            <td></td>
+          </tr>
+          <tr>
+            <td class="lab">OVERTIME HOURS</td>
+            <td class="mono">${currency(rate)}</td>
+            <td class="mono">${overtime}</td>
+            <td class="mono">${currency(otAmt)}</td>
+            <td></td>
+          </tr>
+          <tr>
+            <td class="lab">HOLIDAY HOURS</td>
+            <td class="mono">${currency(rate)}</td>
+            <td class="mono">${holiday}</td>
+            <td class="mono">${currency(holAmt)}</td>
+            <td></td>
+          </tr>
+          ${excessRow}
+          <tr class="inv-total">
+            <td class="lab" style="text-align:right;">TOTAL</td>
+            <td class="tot mono">${currency(total)}</td>
+            <td></td>
+            <td></td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="inv-pay">
+        <div>
+          <b>Payment To: ${u.bankName || '—'}</b>
+          <div class="lines">
+            Account Name: ${u.bankAccountName || u.name}<br>
+            Account Number: ${u.bankAccountNo || '—'}<br>
+            Email: ${u.bankEmail || u.username || '—'}<br>
+            Address: ${u.bankAddress || '—'}
+          </div>
+        </div>
+        <div class="remit">Please remit via check WISE<br>(information is on file)</div>
+      </div>
+      ${capNote}
+      ${holidayNote}
+    </div>`;
+
+  /* Footer note + Save button state */
+  const note = document.getElementById('inv-excess-note');
+  const bits = [];
+  if (excess > 0) bits.push(`${excess} excess hour${excess === 1 ? '' : 's'} recorded but not billed (over the ${round2(inv.cap)}-hr cap).`);
+  if (inv.overridden) bits.push('Figures were manually adjusted before generating.');
+  note.textContent = bits.join(' ');
+
+  const saveBtn = document.getElementById('inv-save-btn');
+  if (existing) {
+    PENDING_INVOICE = null;
+    saveBtn.style.display = 'none';
+  } else {
+    PENDING_INVOICE = { inv, invoiceNo, invoiceDate };
+    saveBtn.style.display = '';
+  }
+
+  document.getElementById('invoice-modal').classList.add('active');
+}
+
+function closeInvoiceModal() {
+  document.getElementById('invoice-modal').classList.remove('active');
+  PENDING_INVOICE = null;
+}
+
+/* Persist the invoice. Hours/rate are SNAPSHOTTED, so a later rate change or a
+ * retroactive COA never silently alters an invoice that was already sent. */
+async function saveInvoice() {
+  if (!PENDING_INVOICE) return;
+  const { inv, invoiceNo, invoiceDate } = PENDING_INVOICE;
+
+  const dupe = D.invoices.find(i =>
+    i.userId === inv.user.id && i.periodStart === inv.start && i.periodEnd === inv.end
+  );
+  if (dupe && !confirm(`An invoice (#${dupe.invoiceNo}) already exists for ${inv.user.name} covering this exact period. Save another anyway?`)) return;
+
+  const { data, error } = await sb.from('invoices').insert({
+    invoice_no: invoiceNo,
+    user_id: inv.user.id,
+    period_start: inv.start,
+    period_end: inv.end,
+    invoice_date: invoiceDate,
+    rate: inv.rate,
+    regular_hours: inv.regularHours,
+    overtime_hours: inv.overtimeHours,
+    holiday_hours: inv.holidayHours,
+    excess_hours: inv.excessHours,
+    cap_hours: inv.cap,
+    total_amount: inv.total,
+    status: 'issued',
+    notes: inv.overridden ? 'Hours/rate manually adjusted at generation.' : null,
+    created_by: D.session
+  }).select().single();
+
+  if (error) { toast('Could not save invoice: ' + error.message); return; }
+  D.invoices.push(invoiceFromRow(data));
+  closeInvoiceModal();
+  toast(`Invoice #${invoiceNo} saved`);
+  renderInvoiceHistory();
+}
+
+function renderInvoiceHistory() {
+  const tbody = document.getElementById('invoice-rows');
+  if (!tbody) return;
+  const rows = D.invoices.slice().sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  if (rows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty">No invoices generated yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(i => {
+    const u = D.users.find(x => x.id === i.userId);
+    const hrs = round2(i.regularHours + i.overtimeHours + i.holidayHours);
+    const excessTag = i.excessHours > 0
+      ? ` <span class="badge capped" style="font-size:9px;">${round2(i.excessHours)} unbilled</span>` : '';
+    const editTag = i.notes
+      ? ` <span class="badge edited" style="font-size:9px;" title="${i.notes}">adjusted</span>` : '';
+    const statusBadge = i.status === 'paid'
+      ? '<span class="badge approved">Paid</span>'
+      : '<span class="badge pending">Issued</span>';
+    return `<tr>
+      <td class="mono"><strong style="color:var(--ink)">#${i.invoiceNo}</strong></td>
+      <td>${u ? u.name : 'Unknown'}</td>
+      <td>${fmtDate(i.periodStart)} – ${fmtDate(i.periodEnd)}</td>
+      <td class="mono">${hrs}${excessTag}${editTag}</td>
+      <td class="mono"><strong style="color:var(--vc-navy)">${currency(i.totalAmount)}</strong></td>
+      <td style="cursor:pointer;" onclick="toggleInvoiceStatus('${i.id}')" title="Click to toggle paid/issued">${statusBadge}</td>
+      <td><div class="actions-cell">
+        <button class="btn btn-ghost btn-sm" onclick="viewInvoice('${i.id}')">View</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteInvoice('${i.id}')">Delete</button>
+      </div></td>
+    </tr>`;
+  }).join('');
+}
+
+/* Re-open a saved invoice from its snapshot. */
+function viewInvoice(id) {
+  const i = D.invoices.find(x => x.id === id);
+  if (!i) return;
+  const u = D.users.find(x => x.id === i.userId);
+  if (!u) { toast('That employee no longer exists'); return; }
+  /* Recompute only to recover the holiday-date detail lines; the money still
+   * comes from the stored snapshot inside openInvoicePreview(). */
+  const fresh = computeInvoice(u, i.periodStart, i.periodEnd);
+  fresh.cap = i.capHours;
+  openInvoicePreview(fresh, i);
+}
+
+async function toggleInvoiceStatus(id) {
+  const i = D.invoices.find(x => x.id === id);
+  if (!i) return;
+  const next = i.status === 'paid' ? 'issued' : 'paid';
+  const { error } = await sb.from('invoices').update({ status: next }).eq('id', id);
+  if (error) { toast('Update failed: ' + error.message); return; }
+  i.status = next;
+  toast(`Invoice #${i.invoiceNo} marked ${next}`);
+  renderInvoiceHistory();
+}
+
+async function deleteInvoice(id) {
+  const i = D.invoices.find(x => x.id === id);
+  if (!i) return;
+  if (!confirm(`Delete invoice #${i.invoiceNo}? This cannot be undone.`)) return;
+  const { error } = await sb.from('invoices').delete().eq('id', id);
+  if (error) { toast('Delete failed: ' + error.message); return; }
+  D.invoices = D.invoices.filter(x => x.id !== id);
+  toast('Invoice deleted');
+  renderInvoiceHistory();
 }
 
 /* ============== LIVE CLOCK (user's local zone) ============== */
