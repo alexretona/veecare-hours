@@ -770,6 +770,7 @@
         <div class="nav-item" data-emp-view="timesheet" onclick="switchEmpView('timesheet')">My timesheet</div>
         <div class="nav-item" data-emp-view="leaves" onclick="switchEmpView('leaves')">Leaves</div>
         <div class="nav-item" data-emp-view="coa" onclick="switchEmpView('coa')">Attendance corrections</div>
+        <div class="nav-item" data-emp-view="invoices" onclick="switchEmpView('invoices')">My invoices</div>
       </div>
     </div>
     <div class="user-chip">
@@ -915,6 +916,23 @@
         <table>
           <thead><tr><th>Date</th><th>Requested clock in</th><th>Requested clock out</th><th>Lunch</th><th>Reason</th><th>Status</th></tr></thead>
           <tbody id="coa-rows"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- EMPLOYEE: MY INVOICES -->
+    <div class="view" data-emp-view-pane="invoices">
+      <div class="page-header">
+        <div>
+          <div class="page-title">My invoices</div>
+          <div class="page-sub">Invoices your admin has released. Review each one, then acknowledge it or raise a dispute.</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <table>
+          <thead><tr><th>Invoice #</th><th>Period</th><th>Hours</th><th>Amount</th><th>Status</th><th></th></tr></thead>
+          <tbody id="emp-invoice-rows"></tbody>
         </table>
       </div>
     </div>
@@ -1481,6 +1499,31 @@
   </div>
 </div>
 
+<!-- DISPUTE INVOICE (employee) -->
+<div class="modal-backdrop" id="dispute-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Dispute invoice <span id="dispute-inv-no"></span></div>
+      <button class="modal-close" onclick="closeDisputeModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="dispute-inv-id">
+      <p style="font-size:12px; color:var(--ink-soft); margin-bottom:12px;">
+        Tell your admin what looks wrong — for example the hours, the rate, the period, or the bank details.
+        They'll review and, if needed, revise and re-send the invoice.
+      </p>
+      <div class="field">
+        <label>What's the issue?</label>
+        <textarea id="dispute-reason" rows="4" placeholder="e.g. Hours worked should be 80, not 72 — I have an approved COA for July 1."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm" onclick="closeDisputeModal()">Cancel</button>
+      <button class="btn btn-danger btn-sm" onclick="submitDispute()">Submit dispute</button>
+    </div>
+  </div>
+</div>
+
 <!-- INVOICE BUILDER -->
 <div class="modal-backdrop" id="invoice-builder-modal">
   <div class="modal" style="max-width:640px; width:96%;">
@@ -1662,6 +1705,12 @@ function invoiceFromRow(r) {
     totalAmount: Number(r.total_amount) || 0,
     status: r.status,
     notes: r.notes || null,
+    workflow: r.workflow || 'draft',
+    sentAt: r.sent_at || null,
+    acknowledgedAt: r.acknowledged_at || null,
+    disputedAt: r.disputed_at || null,
+    disputeReason: r.dispute_reason || null,
+    revision: r.revision || 1,
     createdAt: r.created_at
   };
 }
@@ -2421,6 +2470,7 @@ function switchEmpView(v) {
   if (v === 'timesheet') renderTimesheet();
   if (v === 'leaves') renderLeaves();
   if (v === 'coa') renderCoa();
+  if (v === 'invoices') renderEmpInvoices();
 }
 
 function renderEmployee() {
@@ -4627,6 +4677,7 @@ function openInvoiceBuilder(uid, offset, custom) {
 function closeInvoiceBuilder() {
   document.getElementById('invoice-builder-modal').classList.remove('active');
   IB = null;
+  REVISING_ID = null;   /* a cancelled revise must not affect the next save */
 }
 
 function setIbDatesOpen(open) {
@@ -4785,7 +4836,11 @@ function buildInvoiceFromBuilder() {
 function previewFromBuilder() {
   if (!IB) return;
   const inv = buildInvoiceFromBuilder();
-  closeInvoiceBuilder();
+  /* Hide the builder but PRESERVE REVISING_ID — saveInvoice() needs it to know
+   * this is a revise-and-re-send rather than a brand-new invoice. Full reset
+   * (including REVISING_ID) only happens on an explicit Cancel. */
+  document.getElementById('invoice-builder-modal').classList.remove('active');
+  IB = null;
   openInvoicePreview(inv, null);
 }
 
@@ -4945,6 +5000,7 @@ function openInvoicePreview(inv, existing) {
 function closeInvoiceModal() {
   document.getElementById('invoice-modal').classList.remove('active');
   PENDING_INVOICE = null;
+  REVISING_ID = null;   /* closing the preview abandons an in-progress revise */
 }
 
 /* Persist the invoice. Hours/rate are SNAPSHOTTED, so a later rate change or a
@@ -4952,6 +5008,47 @@ function closeInvoiceModal() {
 async function saveInvoice() {
   if (!PENDING_INVOICE) return;
   const { inv, invoiceNo, invoiceDate } = PENDING_INVOICE;
+
+  /* Revise-and-re-send path: update the existing record in place, bump its
+   * revision, and push it straight back to 'sent' so the employee sees the
+   * corrected version with a fresh chance to acknowledge or dispute. */
+  if (REVISING_ID) {
+    const orig = D.invoices.find(x => x.id === REVISING_ID);
+    if (orig) {
+      const patch = {
+        rate: inv.rate,
+        regular_hours: inv.regularHours,
+        overtime_hours: inv.overtimeHours,
+        holiday_hours: inv.holidayHours,
+        excess_hours: inv.excessHours,
+        cap_hours: inv.cap,
+        total_amount: inv.total,
+        revision: (orig.revision || 1) + 1,
+        workflow: 'sent',
+        sent_at: new Date().toISOString(),
+        disputed_at: null,
+        dispute_reason: null,
+        acknowledged_at: null,
+        notes: inv.overridden ? 'Hours/rate manually adjusted on revision.' : orig.notes
+      };
+      const { error } = await sb.from('invoices').update(patch).eq('id', REVISING_ID);
+      if (error) { toast('Could not save revision: ' + error.message); return; }
+      Object.assign(orig, {
+        rate: inv.rate, regularHours: inv.regularHours, overtimeHours: inv.overtimeHours,
+        holidayHours: inv.holidayHours, excessHours: inv.excessHours, capHours: inv.cap,
+        totalAmount: inv.total, revision: patch.revision, workflow: 'sent',
+        sentAt: patch.sent_at, disputedAt: null, disputeReason: null, acknowledgedAt: null,
+        notes: patch.notes
+      });
+      const no = orig.invoiceNo;
+      REVISING_ID = null;
+      closeInvoiceModal();
+      toast(`Invoice #${no} revised (rev ${patch.revision}) and re-sent`);
+      renderInvoiceHistory();
+      return;
+    }
+    REVISING_ID = null;   /* original vanished; fall through to a fresh save */
+  }
 
   const dupe = D.invoices.find(i =>
     i.userId === inv.user.id && i.periodStart === inv.start && i.periodEnd === inv.end
@@ -4972,6 +5069,7 @@ async function saveInvoice() {
     cap_hours: inv.cap,
     total_amount: inv.total,
     status: 'issued',
+    workflow: 'draft',
     notes: inv.overridden ? 'Hours/rate manually adjusted at generation.' : null,
     created_by: D.session
   }).select().single();
@@ -4979,7 +5077,7 @@ async function saveInvoice() {
   if (error) { toast('Could not save invoice: ' + error.message); return; }
   D.invoices.push(invoiceFromRow(data));
   closeInvoiceModal();
-  toast(`Invoice #${invoiceNo} saved`);
+  toast(`Invoice #${invoiceNo} saved as draft — click Send to release it`);
   renderInvoiceHistory();
 }
 
@@ -4998,35 +5096,189 @@ function renderInvoiceHistory() {
       ? ` <span class="badge capped" style="font-size:9px;">${round2(i.excessHours)} unbilled</span>` : '';
     const editTag = i.notes
       ? ` <span class="badge edited" style="font-size:9px;" title="${i.notes}">adjusted</span>` : '';
-    const statusBadge = i.status === 'paid'
-      ? '<span class="badge approved">Paid</span>'
-      : '<span class="badge pending">Issued</span>';
+    const revTag = i.revision > 1
+      ? ` <span class="badge edited" style="font-size:9px;">rev ${i.revision}</span>` : '';
+
     return `<tr>
-      <td class="mono"><strong style="color:var(--ink)">#${i.invoiceNo}</strong></td>
+      <td class="mono"><strong style="color:var(--ink)">#${i.invoiceNo}</strong>${revTag}</td>
       <td>${u ? u.name : 'Unknown'}</td>
       <td>${fmtDate(i.periodStart)} – ${fmtDate(i.periodEnd)}</td>
       <td class="mono">${hrs}${excessTag}${editTag}</td>
       <td class="mono"><strong style="color:var(--vc-navy)">${currency(i.totalAmount)}</strong></td>
-      <td style="cursor:pointer;" onclick="toggleInvoiceStatus('${i.id}')" title="Click to toggle paid/issued">${statusBadge}</td>
-      <td><div class="actions-cell">
-        <button class="btn btn-ghost btn-sm" onclick="viewInvoice('${i.id}')">View</button>
-        <button class="btn btn-danger btn-sm" onclick="deleteInvoice('${i.id}')">Delete</button>
-      </div></td>
+      <td>${invWorkflowBadge(i)}</td>
+      <td><div class="actions-cell">${adminInvoiceActions(i)}</div></td>
     </tr>`;
   }).join('');
 }
 
-/* Re-open a saved invoice from its snapshot. */
+/* The workflow badge, shared logic for admin + employee tables. */
+function invWorkflowBadge(i) {
+  switch (i.workflow) {
+    case 'draft':        return '<span class="badge out">Draft</span>';
+    case 'sent':         return '<span class="badge pending">Sent · awaiting response</span>';
+    case 'acknowledged': return '<span class="badge approved">Acknowledged</span>';
+    case 'disputed':     return '<span class="badge absent">Disputed</span>';
+    default:             return '<span class="badge out">' + (i.workflow || '—') + '</span>';
+  }
+}
+
+/* Admin-side buttons depend on where the invoice is in the flow. */
+function adminInvoiceActions(i) {
+  const view = `<button class="btn btn-ghost btn-sm" onclick="viewInvoice('${i.id}')">View</button>`;
+  let extra = '';
+  if (i.workflow === 'draft') {
+    extra = `<button class="btn btn-sm" onclick="sendInvoice('${i.id}')">Send</button>
+             <button class="btn btn-danger btn-sm" onclick="deleteInvoice('${i.id}')">Delete</button>`;
+  } else if (i.workflow === 'sent') {
+    extra = `<button class="btn btn-ghost btn-sm" onclick="reviseInvoice('${i.id}')" title="Pull the invoice back and revise it">Revise</button>`;
+  } else if (i.workflow === 'acknowledged') {
+    /* Confirmed by the employee — nothing left to do but view. */
+  } else if (i.workflow === 'disputed') {
+    extra = `<button class="btn btn-sm" onclick="showDispute('${i.id}')" title="Read the employee's reason">Review dispute</button>
+             <button class="btn btn-ghost btn-sm" onclick="reviseInvoice('${i.id}')">Revise &amp; re-send</button>`;
+  }
+  return view + extra;
+}
+
+/* Re-open a saved invoice from its snapshot (used by admin AND employee).
+ * openInvoicePreview() already hides the Save button whenever an existing
+ * record is passed, so this is inherently view-only — exactly what the
+ * employee needs. Print / Save PDF stays available for download. */
 function viewInvoice(id) {
   const i = D.invoices.find(x => x.id === id);
   if (!i) return;
   const u = D.users.find(x => x.id === i.userId);
   if (!u) { toast('That employee no longer exists'); return; }
-  /* Recompute only to recover the holiday-date detail lines; the money still
-   * comes from the stored snapshot inside openInvoicePreview(). */
   const fresh = computeInvoice(u, i.periodStart, i.periodEnd);
   fresh.cap = i.capHours;
   openInvoicePreview(fresh, i);
+}
+
+/* ============== INVOICE WORKFLOW (admin) ============== */
+
+/* Release a draft (or revised) invoice to the employee. */
+async function sendInvoice(id) {
+  const i = D.invoices.find(x => x.id === id);
+  if (!i) return;
+  const u = D.users.find(x => x.id === i.userId);
+  if (!confirm(`Send invoice #${i.invoiceNo} to ${u ? u.name : 'the employee'}? They'll be able to view it and either acknowledge or dispute it.`)) return;
+
+  const patch = {
+    workflow: 'sent',
+    sent_at: new Date().toISOString(),
+    /* Sending clears any prior dispute so the record reflects the current round. */
+    disputed_at: null,
+    dispute_reason: null,
+    acknowledged_at: null
+  };
+  const { error } = await sb.from('invoices').update(patch).eq('id', id);
+  if (error) { toast('Send failed: ' + error.message); return; }
+  Object.assign(i, { workflow: 'sent', sentAt: patch.sent_at, disputedAt: null, disputeReason: null, acknowledgedAt: null });
+  toast(`Invoice #${i.invoiceNo} sent`);
+  renderInvoiceHistory();
+}
+
+/* Pull an invoice back into the builder to change the numbers, then re-send.
+ * We open the builder pre-loaded with this invoice's period; saving there
+ * creates the corrected figures. To keep the audit trail simple we bump the
+ * revision on the SAME record rather than spawning a new invoice number. */
+let REVISING_ID = null;
+function reviseInvoice(id) {
+  const i = D.invoices.find(x => x.id === id);
+  if (!i) return;
+  REVISING_ID = id;
+  openInvoiceBuilder(i.userId, 0, true);
+  /* Force the builder onto this invoice's exact stored period. */
+  IB.start = i.periodStart;
+  IB.end = i.periodEnd;
+  document.getElementById('ib-from').value = i.periodStart;
+  document.getElementById('ib-to').value = i.periodEnd;
+  onIbDateChange();
+  toast('Revising invoice #' + i.invoiceNo + ' — adjust and preview, then it will re-send on save');
+}
+
+function showDispute(id) {
+  const i = D.invoices.find(x => x.id === id);
+  if (!i || !i.disputeReason) { toast('No dispute reason on file'); return; }
+  const u = D.users.find(x => x.id === i.userId);
+  alert(`Dispute on invoice #${i.invoiceNo} from ${u ? u.name : 'employee'}:\n\n${i.disputeReason}`);
+}
+
+/* ============== MY INVOICES (employee) ============== */
+function renderEmpInvoices() {
+  const tbody = document.getElementById('emp-invoice-rows');
+  if (!tbody) return;
+  const uid = D.session;
+  /* Employees never see drafts — only what's been released to them. */
+  const rows = D.invoices
+    .filter(i => i.userId === uid && i.workflow !== 'draft')
+    .sort((a, b) => (b.sentAt || b.createdAt || '').localeCompare(a.sentAt || a.createdAt || ''));
+
+  if (rows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" class="empty">No invoices yet. When your admin releases one, it will appear here.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = rows.map(i => {
+    const hrs = round2(i.regularHours + i.overtimeHours + i.holidayHours);
+    const revTag = i.revision > 1 ? ` <span class="badge edited" style="font-size:9px;">rev ${i.revision}</span>` : '';
+
+    let actions = `<button class="btn btn-ghost btn-sm" onclick="viewInvoice('${i.id}')">View / download</button>`;
+    if (i.workflow === 'sent') {
+      actions += `<button class="btn btn-sm" onclick="acknowledgeInvoice('${i.id}')" title="Confirm this invoice is correct">Acknowledge</button>
+                  <button class="btn btn-danger btn-sm" onclick="openDisputeModal('${i.id}')">Dispute</button>`;
+    } else if (i.workflow === 'disputed') {
+      actions += `<span class="badge absent" style="font-size:9px;" title="${(i.disputeReason||'').replace(/"/g,'&quot;')}">Awaiting revision</span>`;
+    }
+
+    return `<tr>
+      <td class="mono"><strong style="color:var(--ink)">#${i.invoiceNo}</strong>${revTag}</td>
+      <td>${fmtDate(i.periodStart)} – ${fmtDate(i.periodEnd)}</td>
+      <td class="mono">${hrs}</td>
+      <td class="mono"><strong style="color:var(--vc-navy)">${currency(i.totalAmount)}</strong></td>
+      <td>${invWorkflowBadge(i)}</td>
+      <td><div class="actions-cell">${actions}</div></td>
+    </tr>`;
+  }).join('');
+}
+
+async function acknowledgeInvoice(id) {
+  const i = D.invoices.find(x => x.id === id);
+  if (!i) return;
+  if (!confirm(`Acknowledge invoice #${i.invoiceNo} as correct? This confirms the invoice is in good form.`)) return;
+  const patch = { workflow: 'acknowledged', acknowledged_at: new Date().toISOString() };
+  const { error } = await sb.from('invoices').update(patch).eq('id', id);
+  if (error) { toast('Could not acknowledge: ' + error.message); return; }
+  Object.assign(i, { workflow: 'acknowledged', acknowledgedAt: patch.acknowledged_at });
+  toast(`Invoice #${i.invoiceNo} acknowledged`);
+  renderEmpInvoices();
+}
+
+function openDisputeModal(id) {
+  const i = D.invoices.find(x => x.id === id);
+  if (!i) return;
+  document.getElementById('dispute-inv-id').value = id;
+  document.getElementById('dispute-inv-no').textContent = '#' + i.invoiceNo;
+  document.getElementById('dispute-reason').value = '';
+  document.getElementById('dispute-modal').classList.add('active');
+}
+function closeDisputeModal() {
+  document.getElementById('dispute-modal').classList.remove('active');
+}
+
+async function submitDispute() {
+  const id = document.getElementById('dispute-inv-id').value;
+  const reason = document.getElementById('dispute-reason').value.trim();
+  if (!reason) { toast('Please describe the issue'); return; }
+  const i = D.invoices.find(x => x.id === id);
+  if (!i) return;
+  const patch = { workflow: 'disputed', disputed_at: new Date().toISOString(), dispute_reason: reason };
+  const { error } = await sb.from('invoices').update(patch).eq('id', id);
+  if (error) { toast('Could not submit dispute: ' + error.message); return; }
+  Object.assign(i, { workflow: 'disputed', disputedAt: patch.disputed_at, disputeReason: reason });
+  closeDisputeModal();
+  toast(`Dispute submitted for invoice #${i.invoiceNo}`);
+  renderEmpInvoices();
 }
 
 async function toggleInvoiceStatus(id) {
