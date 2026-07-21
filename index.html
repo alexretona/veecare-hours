@@ -928,6 +928,7 @@
           <div class="page-title">My invoices</div>
           <div class="page-sub">Invoices your admin has released. Review each one, then acknowledge it or raise a dispute.</div>
         </div>
+        <button class="btn btn-ghost btn-sm" id="emp-inv-refresh-btn" onclick="refreshMyInvoices()">Refresh</button>
       </div>
 
       <div class="panel">
@@ -1002,7 +1003,7 @@
           <div class="panel-title">Who's working right now</div>
         </div>
         <table>
-          <thead><tr><th>Employee</th><th>Clocked in at</th><th>Duration</th><th>Status</th></tr></thead>
+          <thead><tr><th>Employee</th><th>Clocked in at</th><th>Duration</th><th>Status</th><th></th></tr></thead>
           <tbody id="active-employees"></tbody>
         </table>
       </div>
@@ -1412,6 +1413,43 @@
     <div class="modal-footer">
       <button class="btn btn-ghost btn-sm" onclick="closeDeleteEntryModal()">Cancel</button>
       <button class="btn btn-danger btn-sm" style="background:var(--danger);color:white;border-color:var(--danger);" onclick="executeDeleteEntry()">Yes, delete entry</button>
+    </div>
+  </div>
+</div>
+
+<!-- FORCE CLOCK OUT (admin) -->
+<div class="modal-backdrop" id="force-clockout-modal">
+  <div class="modal" style="max-width:460px;">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">Force clock out</div>
+        <div style="font-size:11px;color:var(--ink-muted);margin-top:2px;" id="fco-emp-name"></div>
+      </div>
+      <button class="modal-close" onclick="closeForceClockOutModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="fco-entry-id">
+      <div style="padding:10px 12px; background:var(--paper); border:1px solid var(--line); border-radius:4px; font-size:12px; color:var(--ink-soft); margin-bottom:14px;" id="fco-info"></div>
+
+      <p style="font-size:12px; color:var(--ink-soft); margin-bottom:10px;">
+        This ends their shift administratively — use it when someone has clearly forgotten to clock out.
+        Set the actual time they stopped working, not necessarily right now.
+      </p>
+      <div class="row-2">
+        <div class="field">
+          <label>Clock-out date</label>
+          <input type="date" id="fco-date">
+        </div>
+        <div class="field">
+          <label>Clock-out time</label>
+          <input type="time" id="fco-time">
+        </div>
+      </div>
+      <div id="fco-open-warning" style="display:none; margin-top:6px; padding:9px 12px; background:#FFF3D9; border-left:3px solid #8A6100; border-radius:4px; font-size:11px; color:var(--ink);"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm" onclick="closeForceClockOutModal()">Cancel</button>
+      <button class="btn btn-danger btn-sm" onclick="submitForceClockOut()">Force clock out</button>
     </div>
   </div>
 </div>
@@ -2075,6 +2113,17 @@ function phDateTimeToUTC(dateStr, timeStr) {
   return new Date(Date.parse(dateStr + 'T' + timeStr + ':00Z') - off*60*1000).toISOString();
 }
 
+/* Same conversion, but for an EXPLICIT zone rather than the current viewer's
+ * ACTIVE_TZ. Needed when an admin is setting a timestamp for a specific
+ * employee who may be in a different timezone than the admin themselves
+ * (phDateTimeToUTC above is only correct when the date/time was entered by
+ * the person whose own zone IS the active one, e.g. an employee's own COA). */
+function zoneDateTimeToUTC(dateStr, timeStr, tz) {
+  const approx = new Date(dateStr + 'T' + timeStr + ':00Z');
+  const off = tzOffsetMinutes(tz, approx);
+  return new Date(Date.parse(dateStr + 'T' + timeStr + ':00Z') - off*60*1000).toISOString();
+}
+
 /* Add n days to a YYYY-MM-DD string, return YYYY-MM-DD (zone-agnostic). */
 function addDays(dateStr, n) {
   const ms = Date.parse(dateStr + 'T12:00:00Z') + n*86400*1000;
@@ -2637,7 +2686,7 @@ function switchEmpView(v) {
   if (v === 'timesheet') renderTimesheet();
   if (v === 'leaves') renderLeaves();
   if (v === 'coa') renderCoa();
-  if (v === 'invoices') renderEmpInvoices();
+  if (v === 'invoices') { renderEmpInvoices(); refreshMyInvoices(); }
 }
 
 function renderEmployee() {
@@ -3754,7 +3803,7 @@ function renderAdmin() {
 
   const activeTbody = document.getElementById('active-employees');
   if (active.length === 0) {
-    activeTbody.innerHTML = '<tr><td colspan="4" class="empty">No one is clocked in right now.</td></tr>';
+    activeTbody.innerHTML = '<tr><td colspan="5" class="empty">No one is clocked in right now.</td></tr>';
   } else {
     activeTbody.innerHTML = active.map(e => {
       const u = D.users.find(x => x.id===e.userId);
@@ -3771,11 +3820,18 @@ function renderAdmin() {
       const pausedBadge = isPaused(e)
         ? ' <span class="badge out" style="font-size:9px; padding:1px 6px; background:var(--vc-navy); color:white;">paused</span>'
         : '';
+      /* Flag shifts that have run past a standard 8-hour day — usually means
+       * the employee simply forgot to clock out, not that they're genuinely
+       * still working. Gives the admin something to scan for at a glance. */
+      const overdueBadge = dur >= 8
+        ? ' <span class="badge absent" style="font-size:9px; padding:1px 6px;" title="Active more than 8 hours — likely a forgotten clock-out">⚠ 8+ hrs</span>'
+        : '';
       return `<tr>
-        <td>${u.name}${onLunchBadge}${pausedBadge}</td>
+        <td>${u.name}${onLunchBadge}${pausedBadge}${overdueBadge}</td>
         <td class="mono">${fmtTime(e.clockIn)}</td>
         <td class="mono">${dur} hrs</td>
         <td><span class="badge in">${isPaused(e) ? 'Paused' : 'Active'}</span></td>
+        <td><button class="btn btn-ghost btn-sm" onclick="openForceClockOutModal('${e.id}')">Force clock out</button></td>
       </tr>`;
     }).join('');
   }
@@ -3791,6 +3847,110 @@ function renderAdmin() {
         <td>${u.name}</td><td>${l.type}</td><td>${fmtDate(l.from)}</td><td>${fmtDate(l.to)}</td><td class="mono">${daysBetween(l.from,l.to)}</td>
       </tr>`;
     }).join('');
+  }
+}
+
+/* ============== FORCE CLOCK OUT (admin) ==============
+ * For an employee who has clearly forgotten to clock out — the shift on
+ * Overview shows a "⚠ 8+ hrs" flag once it's been open more than a standard
+ * working day, since a live shift that long is far more likely a missed
+ * clock-out than someone still genuinely on the clock.
+ *
+ * The admin sets the ACTUAL time the employee stopped working (not
+ * necessarily "now" — this is often noticed the next morning), in that
+ * employee's own timezone. Any still-open lunch or pause is closed at that
+ * same moment so worked-hours math comes out clean rather than showing a
+ * lunch or pause that never ended. */
+function openForceClockOutModal(entryId) {
+  const entry = D.entries.find(e => e.id === entryId);
+  if (!entry || entry.status !== 'in-progress') { toast('That shift is no longer active.'); return; }
+  const u = D.users.find(x => x.id === entry.userId);
+  const tz = (u && u.timezone) || ACTIVE_TZ;
+
+  document.getElementById('fco-entry-id').value = entryId;
+  document.getElementById('fco-emp-name').textContent = u ? u.name : 'Employee';
+
+  const nowTs = nowISO();
+  document.getElementById('fco-date').value = zoneYmd(new Date(nowTs), tz);
+  document.getElementById('fco-time').value = isoToZoneHHMM(nowTs, tz);
+
+  let elapsed = hoursBetween(entry.clockIn, nowTs);
+  if (entry.lunchStart && entry.lunchEnd) elapsed -= lunchMinutes(entry) / 60;
+  else if (entry.lunchStart) elapsed -= (Date.now() - new Date(entry.lunchStart).getTime()) / 3600000;
+  elapsed -= pauseMinutes(entry) / 60;
+  if (isPaused(entry)) elapsed -= openPauseMinutes(entry) / 60;
+
+  document.getElementById('fco-info').innerHTML =
+    `Clocked in ${fmtTime(entry.clockIn, tz)} ${tzLabel(tz)} on ${fmtDate(entry.date, tz)} — shown in this employee's own timezone · ${round2(Math.max(0, elapsed))} hrs elapsed so far`;
+
+  const openNote = document.getElementById('fco-open-warning');
+  if (entry.lunchStart && !entry.lunchEnd) {
+    openNote.style.display = '';
+    openNote.textContent = 'Still on an open lunch break — it will be closed at the clock-out time you set below.';
+  } else if (isPaused(entry)) {
+    openNote.style.display = '';
+    openNote.textContent = 'Still on an open pause — it will be closed at the clock-out time you set below.';
+  } else {
+    openNote.style.display = 'none';
+  }
+
+  document.getElementById('force-clockout-modal').classList.add('active');
+}
+
+function closeForceClockOutModal() {
+  document.getElementById('force-clockout-modal').classList.remove('active');
+}
+
+async function submitForceClockOut() {
+  const entryId = document.getElementById('fco-entry-id').value;
+  const entry = D.entries.find(e => e.id === entryId);
+  if (!entry || entry.status !== 'in-progress') { toast('That shift is no longer active.'); closeForceClockOutModal(); return; }
+  const u = D.users.find(x => x.id === entry.userId);
+  const tz = (u && u.timezone) || ACTIVE_TZ;
+
+  const date = document.getElementById('fco-date').value;
+  const time = document.getElementById('fco-time').value;
+  if (!date || !time) { toast('Pick a clock-out date and time'); return; }
+
+  const clockOutIso = zoneDateTimeToUTC(date, time, tz);
+  if (new Date(clockOutIso) <= new Date(entry.clockIn)) {
+    toast('Clock-out must be after the original clock-in time.');
+    return;
+  }
+  if (new Date(clockOutIso) > new Date(nowISO())) {
+    toast('Clock-out time can\'t be in the future.');
+    return;
+  }
+
+  if (!confirm(`Force clock out ${u ? u.name : 'this employee'} at ${fmtTime(clockOutIso, tz)} on ${fmtDate(zoneYmd(new Date(clockOutIso), tz), tz)}? This ends their shift and marks it complete.`)) return;
+
+  /* Close any still-open lunch or pause at the same moment, so the math
+   * downstream (workedHours, payroll, invoices) is never left with a
+   * dangling open interval. */
+  const patch = { clock_out: clockOutIso, status: 'completed' };
+  if (entry.lunchStart && !entry.lunchEnd) {
+    patch.lunch_end = clockOutIso;
+  }
+  let pauses = pauseList(entry).slice();
+  if (pauses.length && !pauses[pauses.length - 1].end) {
+    pauses = pauses.slice(0, -1).concat([{ ...pauses[pauses.length - 1], end: clockOutIso }]);
+    patch.pauses = pauses;
+  }
+
+  const { error } = await sb.from('time_entries').update(patch).eq('id', entryId);
+  if (error) { toast('Force clock-out failed: ' + error.message); return; }
+
+  entry.clockOut = clockOutIso;
+  entry.status = 'completed';
+  if (patch.lunch_end) entry.lunchEnd = patch.lunch_end;
+  if (patch.pauses) entry.pauses = patch.pauses;
+
+  closeForceClockOutModal();
+  toast(`${u ? u.name : 'Employee'} force-clocked out at ${fmtTime(clockOutIso, tz)}.`);
+  renderAdmin();
+  /* Keep the Timesheets pane correct too, in case the admin checks it next. */
+  if (document.querySelector('[data-admin-view-pane="timesheets"]')?.classList.contains('active')) {
+    renderAdminTimesheets();
   }
 }
 
@@ -5680,6 +5840,27 @@ function showDispute(id) {
 }
 
 /* ============== MY INVOICES (employee) ============== */
+/* Re-fetch invoices from Supabase and re-render "My invoices". Called every
+ * time the tab opens, and available as a manual "Refresh" button, because
+ * this app has no realtime subscription — a sent/revised invoice on the
+ * admin side otherwise wouldn't appear here until a full page reload. RLS
+ * already scopes the select() to rows this signed-in employee may see, so
+ * it's safe to replace the cache wholesale with the fresh result. */
+async function refreshMyInvoices() {
+  const btn = document.getElementById('emp-inv-refresh-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Refreshing…'; }
+  try {
+    const { data, error } = await sb.from('invoices').select('*');
+    if (error) { toast('Could not refresh invoices: ' + error.message); return; }
+    D.invoices = (data || []).map(invoiceFromRow);
+    renderEmpInvoices();
+  } catch (e) {
+    toast('Could not refresh invoices');
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Refresh'; }
+  }
+}
+
 function renderEmpInvoices() {
   const tbody = document.getElementById('emp-invoice-rows');
   if (!tbody) return;
