@@ -1705,6 +1705,24 @@
         </p>
       </div>
 
+      <!-- Other charge: a flat, ad hoc amount independent of pay basis — for
+           allowances, reimbursements, or any one-off addition to the invoice. -->
+      <div style="margin-top:18px; padding-top:14px; border-top:1px solid var(--line);">
+        <label style="display:block; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-muted); margin-bottom:8px;">
+          Other charge <span style="font-weight:400; text-transform:none; letter-spacing:normal;">(optional — allowance, reimbursement, etc.)</span>
+        </label>
+        <div class="row-2">
+          <div class="field">
+            <label>Description</label>
+            <input type="text" id="ib-other-label" placeholder="Allowance" value="Others">
+          </div>
+          <div class="field">
+            <label>Amount (PHP)</label>
+            <input type="number" id="ib-other-amount" step="0.01" min="0" value="0" oninput="refreshBuilderTotals()">
+          </div>
+        </div>
+      </div>
+
       <div id="ib-dirty-note" style="display:none; margin-top:12px; padding:9px 12px; background:#EAF2FB; border-left:3px solid #1E5BA8; border-radius:4px; font-size:11px; color:var(--ink);">
         <strong>Manual override in effect.</strong> The highlighted figures no longer match what the time entries compute to. The invoice will be generated from the values you entered.
       </div>
@@ -1826,6 +1844,8 @@ function invoiceFromRow(r) {
     notes: r.notes || null,
     payBasis: r.pay_basis || 'hourly',
     monthlySalary: (r.monthly_salary === null || r.monthly_salary === undefined) ? null : Number(r.monthly_salary),
+    otherLabel: r.other_label || 'Others',
+    otherAmount: Number(r.other_amount) || 0,
     workflow: r.workflow || 'draft',
     sentAt: r.sent_at || null,
     acknowledgedAt: r.acknowledged_at || null,
@@ -5076,6 +5096,11 @@ function recomputeBuilder(reseed) {
       el.value = seedMonthly[id];
       el.classList.remove('dirty');
     }
+
+    /* Other charge always starts blank — an allowance is never "computed",
+     * the admin adds it fresh each time it applies. */
+    document.getElementById('ib-other-label').value = 'Others';
+    document.getElementById('ib-other-amount').value = 0;
   }
   refreshBuilderTotals();
 }
@@ -5109,6 +5134,7 @@ function onIbFieldChange(field) {
 
 function refreshBuilderTotals() {
   const c = IB.computed;
+  const otherAmt = ibNum('ib-other-amount');
   let total;
 
   if (IB.basis === 'monthly') {
@@ -5116,7 +5142,7 @@ function refreshBuilderTotals() {
     const holHrs = ibNum('ib-holiday-m');
     const holRate = ibNum('ib-hol-rate-m');
     const holAmt = round2(holHrs * holRate);
-    total = round2(salary + holAmt);
+    total = round2(salary + holAmt + otherAmt);
 
     document.getElementById('ib-monthly-salary-amt').textContent = currency(salary);
     document.getElementById('ib-holiday-m-amt').textContent = currency(holAmt);
@@ -5130,7 +5156,7 @@ function refreshBuilderTotals() {
     const regAmt = round2(reg * rate);
     const otAmt = round2(ot * rate);
     const holAmt = round2(hol * rate);
-    total = round2(regAmt + otAmt + holAmt);
+    total = round2(regAmt + otAmt + holAmt + otherAmt);
 
     document.getElementById('ib-regular-amt').textContent = currency(regAmt);
     document.getElementById('ib-overtime-amt').textContent = currency(otAmt);
@@ -5161,6 +5187,9 @@ function buildInvoiceFromBuilder() {
   const c = IB.computed;
   const overridden = Object.values(IB.dirty).some(Boolean);
 
+  const otherLabel = (document.getElementById('ib-other-label').value || '').trim() || 'Others';
+  const otherAmount = ibNum('ib-other-amount');
+
   if (IB.basis === 'monthly') {
     const salary = ibNum('ib-monthly-salary');
     const holiday = ibNum('ib-holiday-m');
@@ -5184,7 +5213,9 @@ function buildInvoiceFromBuilder() {
       rate: holRate,                /* kept for the Holiday line's hrs × rate */
       regularAmount: salary,
       holidayAmount: holAmt,
-      total: round2(salary + holAmt),
+      otherLabel,
+      otherAmount,
+      total: round2(salary + holAmt + otherAmount),
       daysWorked: c.daysWorked,
       overridden
     };
@@ -5218,7 +5249,9 @@ function buildInvoiceFromBuilder() {
     rate,
     regularAmount: regAmt,
     holidayAmount: holAmt,
-    total: round2(regAmt + otAmt + holAmt),
+    otherLabel,
+    otherAmount,
+    total: round2(regAmt + otAmt + holAmt + otherAmount),
     daysWorked: c.daysWorked,
     overridden
   };
@@ -5260,6 +5293,8 @@ function openInvoicePreview(inv, existing) {
   const excess   = existing ? existing.excessHours   : inv.excessHours;
   const rate     = existing ? existing.rate          : inv.rate;
   const total    = existing ? existing.totalAmount   : inv.total;
+  const otherLabel  = (existing ? existing.otherLabel  : inv.otherLabel)  || 'Others';
+  const otherAmount = (existing ? existing.otherAmount : inv.otherAmount) || 0;
 
   const regAmt = round2(regular * rate);
   const otAmt  = round2(overtime * rate);
@@ -5331,6 +5366,17 @@ function openInvoicePreview(inv, existing) {
           ${excessRow}
   `;
 
+  /* Other charge — an ad hoc allowance/reimbursement, independent of pay
+   * basis. Only shown when actually used, so a plain invoice stays plain. */
+  const otherRow = otherAmount > 0 ? `
+          <tr>
+            <td class="lab">${(otherLabel || 'OTHERS').toUpperCase()}</td>
+            <td class="mono">—</td>
+            <td class="mono">—</td>
+            <td class="mono">${currency(otherAmount)}</td>
+            <td></td>
+          </tr>` : '';
+
   document.getElementById('invoice-print').innerHTML = `
     <div class="inv-sheet">
       <div class="inv-head">${logo ? `<img src="${logo}" alt="VeeCare Staffing Solutions PH">` : '<div style="font-size:22px;font-weight:800;color:var(--vc-green);">VeeCare</div>'}</div>
@@ -5368,7 +5414,7 @@ function openInvoicePreview(inv, existing) {
           </tr>
         </thead>
         <tbody>
-          ${invoiceRowsHtml}
+          ${invoiceRowsHtml}${otherRow}
           <tr class="inv-total">
             <td class="lab" style="text-align:right;">TOTAL</td>
             <td class="tot mono">${currency(total)}</td>
@@ -5441,6 +5487,8 @@ async function saveInvoice() {
         cap_hours: inv.cap,
         pay_basis: inv.payBasis || 'hourly',
         monthly_salary: (inv.payBasis === 'monthly') ? inv.monthlySalary : null,
+        other_label: inv.otherLabel || 'Others',
+        other_amount: inv.otherAmount || 0,
         total_amount: inv.total,
         revision: (orig.revision || 1) + 1,
         workflow: 'sent',
@@ -5456,6 +5504,7 @@ async function saveInvoice() {
         rate: inv.rate, regularHours: inv.regularHours, overtimeHours: inv.overtimeHours,
         holidayHours: inv.holidayHours, excessHours: inv.excessHours, capHours: inv.cap,
         payBasis: patch.pay_basis, monthlySalary: patch.monthly_salary,
+        otherLabel: patch.other_label, otherAmount: patch.other_amount,
         totalAmount: inv.total, revision: patch.revision, workflow: 'sent',
         sentAt: patch.sent_at, disputedAt: null, disputeReason: null, acknowledgedAt: null,
         notes: patch.notes
@@ -5489,6 +5538,8 @@ async function saveInvoice() {
     cap_hours: inv.cap,
     pay_basis: inv.payBasis || 'hourly',
     monthly_salary: (inv.payBasis === 'monthly') ? inv.monthlySalary : null,
+    other_label: inv.otherLabel || 'Others',
+    other_amount: inv.otherAmount || 0,
     total_amount: inv.total,
     status: 'issued',
     workflow: 'draft',
@@ -5520,12 +5571,14 @@ function renderInvoiceHistory() {
       ? ` <span class="badge edited" style="font-size:9px;" title="${i.notes}">adjusted</span>` : '';
     const revTag = i.revision > 1
       ? ` <span class="badge edited" style="font-size:9px;">rev ${i.revision}</span>` : '';
+    const otherTag = i.otherAmount > 0
+      ? ` <span class="badge holiday" style="font-size:9px;" title="${i.otherLabel}">+${currency(i.otherAmount)} ${i.otherLabel}</span>` : '';
 
     return `<tr>
       <td class="mono"><strong style="color:var(--ink)">#${i.invoiceNo}</strong>${revTag}</td>
       <td>${u ? u.name : 'Unknown'}</td>
       <td>${fmtDate(i.periodStart)} – ${fmtDate(i.periodEnd)}</td>
-      <td class="mono">${hrs}${excessTag}${editTag}</td>
+      <td class="mono">${hrs}${excessTag}${editTag}${otherTag}</td>
       <td class="mono"><strong style="color:var(--vc-navy)">${currency(i.totalAmount)}</strong></td>
       <td>${invWorkflowBadge(i)}</td>
       <td><div class="actions-cell">${adminInvoiceActions(i)}</div></td>
