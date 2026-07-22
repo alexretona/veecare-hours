@@ -4441,7 +4441,16 @@ function renderAdminTimesheets() {
   const p = periodRange(periodKey);
 
   let entries = D.entries.filter(e => e.status==='completed' && e.date>=p.start && e.date<=p.end);
-  if (empId !== 'all') entries = entries.filter(e => e.userId===empId);
+  if (empId !== 'all') {
+    entries = entries.filter(e => e.userId===empId);
+  } else {
+    /* "All employees" excludes terminated staff entirely, not just from the
+     * name picker — they're a closed chapter, and mixing their entries into
+     * the everyday aggregate view is exactly the clutter this was meant to
+     * avoid. Their history is still reachable via Employees > Terminated. */
+    const terminatedIds = new Set(D.users.filter(u => u.terminatedAt).map(u => u.id));
+    entries = entries.filter(e => !terminatedIds.has(e.userId));
+  }
   const total = entries.reduce((s,e)=>s+workedHours(e),0);
   document.getElementById('admin-ts-total').textContent = round2(total) + ' hrs';
 
@@ -4450,7 +4459,7 @@ function renderAdminTimesheets() {
   let holidayRows = [];
   const workingDays = (periodKey === 'all') ? [] : getWorkingDaysInRange(p.start, p.end);
   const targetEmployees = empId === 'all'
-    ? D.users.filter(u => u.role === 'employee')
+    ? D.users.filter(u => u.role === 'employee' && !u.terminatedAt)
     : D.users.filter(u => u.id === empId);
 
   for (const u of targetEmployees) {
@@ -4996,7 +5005,10 @@ document.addEventListener('click', (ev) => {
 
 function payrollData() {
   const p = payrollRange();
-  let employees = D.users.filter(u => u.role === 'employee');
+  /* Terminated employees are excluded entirely — not just from the picker.
+   * Their pay was settled as of their final invoice; keeping them out of the
+   * everyday payroll run avoids re-surfacing a closed chapter every period. */
+  let employees = D.users.filter(u => u.role === 'employee' && !u.terminatedAt);
   if (PAYROLL_EMP_FILTER.size > 0) {
     employees = employees.filter(u => PAYROLL_EMP_FILTER.has(u.id));
   }
