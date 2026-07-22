@@ -233,12 +233,12 @@
     opacity: 0;
   }
   .topbar.admin::before { opacity: 1; }
-  .topbar-left { display: flex; align-items: center; gap: 24px; }
+  .topbar-left { display: flex; align-items: center; gap: 24px; min-width: 0; }
   .topbar-logo {
     height: 32px;
     width: auto;
   }
-  .nav { display: flex; gap: 2px; }
+  .nav { display: flex; gap: 2px; overflow-x: auto; min-width: 0; }
   .nav-item {
     padding: 7px 14px;
     border-radius: 5px;
@@ -248,6 +248,8 @@
     cursor: pointer;
     transition: all 0.15s;
     position: relative;
+    white-space: nowrap;
+    flex-shrink: 0;
   }
   .nav-item:hover { background: var(--paper); color: var(--vc-navy); }
   .nav-item.active { background: var(--vc-navy); color: white; }
