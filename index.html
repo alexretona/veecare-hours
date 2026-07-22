@@ -3858,6 +3858,7 @@ async function submitCoa() {
 function switchAdminView(v) {
   document.querySelectorAll('[data-admin-view]').forEach(el => el.classList.toggle('active', el.dataset.adminView===v));
   document.querySelectorAll('[data-admin-view-pane]').forEach(el => el.classList.toggle('active', el.dataset.adminViewPane===v));
+  if (v === 'overview') renderAdmin();
   if (v === 'employees') renderEmployeesTable();
   if (v === 'timesheets') { populateEmpFilter(); renderAdminTimesheets(); }
   if (v === 'approvals') { renderApprovals(); renderLeaveHistory(); }
@@ -3921,7 +3922,13 @@ function renderAdmin() {
     }).join('');
   }
 
-  const upcoming = D.leaves.filter(l => l.status==='approved' && l.to >= today()).slice().sort((a,b)=>a.from.localeCompare(b.from)).slice(0,5);
+  /* Terminated employees are excluded here too — a future-dated leave for
+   * someone no longer with the company isn't useful forward planning info,
+   * it's just confusing clutter. */
+  const upcoming = D.leaves
+    .filter(l => l.status==='approved' && l.to >= today())
+    .filter(l => { const u = D.users.find(x => x.id===l.userId); return u && !u.terminatedAt; })
+    .slice().sort((a,b)=>a.from.localeCompare(b.from)).slice(0,5);
   const upcomingTbody = document.getElementById('upcoming-leaves');
   if (upcoming.length === 0) {
     upcomingTbody.innerHTML = '<tr><td colspan="5" class="empty">No upcoming approved leaves.</td></tr>';
@@ -4448,7 +4455,13 @@ function renderAdminTimesheets() {
 
   for (const u of targetEmployees) {
     const userEntryDates = new Set(entries.filter(e => e.userId===u.id).map(e=>e.date));
+    /* A terminated employee can no longer log in, so every working day after
+     * they left would otherwise have no entry and get auto-tagged Absent —
+     * which is misleading noise, not a real attendance gap. Their actual
+     * historical entries (on or before this date) are untouched. */
+    const terminatedDate = u.terminatedAt ? zoneYmd(new Date(u.terminatedAt), u.timezone || ACTIVE_TZ) : null;
     for (const d of workingDays) {
+      if (terminatedDate && d > terminatedDate) continue;
       if (userEntryDates.has(d)) continue;
       /* Precedence: approved leave > holiday > absent. A holiday declared by
        * the client (e.g. 4th of July) must not read as an absence. */
