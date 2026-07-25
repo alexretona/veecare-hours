@@ -541,6 +541,26 @@
   .ib-total-row td.amt { color: var(--vc-navy); font-size: 14px; }
   .ib-actual { font-size: 10px; color: var(--ink-muted); display: block; margin-top: 2px; }
 
+  /* ===== LINE ITEMS (invoice builder) ===== */
+  .li-row {
+    display: grid;
+    grid-template-columns: 118px 1fr 120px auto;
+    gap: 8px;
+    align-items: center;
+    padding: 6px 0;
+  }
+  .li-row select, .li-row input {
+    padding: 6px 8px;
+    border: 1px solid var(--line-strong);
+    border-radius: 4px;
+    font-size: 12px;
+    background: var(--surface);
+    color: var(--ink);
+  }
+  .li-row input[type="number"] { text-align: right; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .li-row .li-remove { padding: 5px 9px; font-size: 11px; }
+  .li-row.deduction select { color: var(--vc-red); font-weight: 600; }
+
   /* ===== INVOICE ===== */
   .inv-sheet {
     background: #fff;
@@ -947,6 +967,8 @@
         </div>
         <button class="btn btn-ghost btn-sm" id="emp-inv-refresh-btn" onclick="refreshMyInvoices()">Refresh</button>
       </div>
+
+      <div class="panel" id="emp-request-panel" style="padding:14px 16px;"></div>
 
       <div class="panel">
         <table>
@@ -1799,22 +1821,19 @@
         </p>
       </div>
 
-      <!-- Other charge: a flat, ad hoc amount independent of pay basis — for
-           allowances, reimbursements, or any one-off addition to the invoice. -->
+      <!-- Additional line items: allowances, incentives, deductions. Each is
+           its own row (type + label + amount), independent of pay basis. -->
       <div style="margin-top:18px; padding-top:14px; border-top:1px solid var(--line);">
-        <label style="display:block; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-muted); margin-bottom:8px;">
-          Other charge <span style="font-weight:400; text-transform:none; letter-spacing:normal;">(optional — allowance, reimbursement, etc.)</span>
-        </label>
-        <div class="row-2">
-          <div class="field">
-            <label>Description</label>
-            <input type="text" id="ib-other-label" placeholder="Allowance" value="Others">
-          </div>
-          <div class="field">
-            <label>Amount (PHP)</label>
-            <input type="number" id="ib-other-amount" step="0.01" min="0" value="0" oninput="refreshBuilderTotals()">
-          </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <label style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-muted);">
+            Additional line items <span style="font-weight:400; text-transform:none; letter-spacing:normal;">(optional)</span>
+          </label>
+          <button class="btn btn-ghost btn-sm" onclick="addLineItemRow()">+ Add line item</button>
         </div>
+        <div id="ib-lineitems-list"></div>
+        <p id="ib-lineitems-empty" style="font-size:11px; color:var(--ink-muted); margin:4px 0 0;">
+          None yet — add an allowance, incentive, or deduction if this invoice needs one.
+        </p>
       </div>
 
       <div id="ib-dirty-note" style="display:none; margin-top:12px; padding:9px 12px; background:#EAF2FB; border-left:3px solid #1E5BA8; border-radius:4px; font-size:11px; color:var(--ink);">
@@ -1844,6 +1863,7 @@
       <button class="btn btn-ghost btn-sm" onclick="closeInvoiceModal()">Close</button>
       <button class="btn btn-ghost btn-sm" onclick="window.print()">Print / Save PDF</button>
       <button class="btn btn-sm" id="inv-save-btn" onclick="saveInvoice()">Save invoice</button>
+      <button class="btn btn-navy btn-sm" id="inv-request-btn" style="display:none;" onclick="submitInvoiceRequest()">Submit request</button>
     </div>
   </div>
 </div>
@@ -1943,6 +1963,9 @@ function invoiceFromRow(r) {
     notes: r.notes || null,
     payBasis: r.pay_basis || 'hourly',
     monthlySalary: (r.monthly_salary === null || r.monthly_salary === undefined) ? null : Number(r.monthly_salary),
+    /* otherLabel/otherAmount are legacy (pre-line-items) fields, kept for any
+     * old invoice saved before this migration. New invoices use line items
+     * (see invoiceLineItemFromRow) instead. */
     otherLabel: r.other_label || 'Others',
     otherAmount: Number(r.other_amount) || 0,
     workflow: r.workflow || 'draft',
@@ -1951,7 +1974,21 @@ function invoiceFromRow(r) {
     disputedAt: r.disputed_at || null,
     disputeReason: r.dispute_reason || null,
     revision: r.revision || 1,
+    /* Set only for invoices the EMPLOYEE requested rather than the admin
+     * generating directly. */
+    requestedAt: r.requested_at || null,
+    requestedBy: r.requested_by || null,
     createdAt: r.created_at
+  };
+}
+function invoiceLineItemFromRow(r) {
+  return {
+    id: r.id,
+    invoiceId: r.invoice_id,
+    lineType: r.line_type,      /* 'allowance' | 'incentive' | 'deduction' */
+    label: r.label,
+    amount: Number(r.amount) || 0,   /* always stored positive; lineType decides the sign */
+    sortOrder: r.sort_order || 0
   };
 }
 function entryFromRow(r) {
@@ -2031,13 +2068,14 @@ function coaFromRow(r) {
  * the admin gets all rows. We load into the same cache shape the UI expects.
  */
 async function hydrate() {
-  const [profilesRes, entriesRes, leavesRes, coasRes, holsRes, invRes] = await Promise.all([
+  const [profilesRes, entriesRes, leavesRes, coasRes, holsRes, invRes, liRes] = await Promise.all([
     sb.from('profiles').select('*'),
     sb.from('time_entries').select('*').is('deleted_at', null),
     sb.from('leave_requests').select('*'),
     sb.from('coa_requests').select('*'),
     sb.from('holidays').select('*'),
-    sb.from('invoices').select('*')
+    sb.from('invoices').select('*'),
+    sb.from('invoice_line_items').select('*')
   ]);
   if (profilesRes.error) throw profilesRes.error;
   if (entriesRes.error) throw entriesRes.error;
@@ -2053,10 +2091,11 @@ async function hydrate() {
    * yet, don't take the whole app down — just run without them. */
   D.holidays = (holsRes && !holsRes.error) ? (holsRes.data || []).map(holidayFromRow) : [];
   D.invoices = (invRes  && !invRes.error)  ? (invRes.data  || []).map(invoiceFromRow) : [];
+  D.invoiceLineItems = (liRes && !liRes.error) ? (liRes.data || []).map(invoiceLineItemFromRow) : [];
 }
 
 /* The in-memory cache. session holds the logged-in user's UUID. */
-let D = { users: [], entries: [], leaves: [], coas: [], holidays: [], invoices: [], session: null };
+let D = { users: [], entries: [], leaves: [], coas: [], holidays: [], invoices: [], invoiceLineItems: [], session: null };
 
 /* ============== TIMEZONE UTILITIES ==============
  * All clock-in/out timestamps are stored as UTC ISO strings (timezone-correct).
@@ -5325,6 +5364,9 @@ function renderCutoffs() {
 
 /* The invoice currently open in the preview modal (held so Save can persist it). */
 let PENDING_INVOICE = null;
+/* Holds the employee's in-progress invoice request while they review the
+ * preview; cleared on close or after submitting. */
+let REQUEST_PREVIEW = null;
 
 /* ============== INVOICE BUILDER ==============
  * Sits between "pick an employee" and "here is the printable invoice".
@@ -5365,13 +5407,24 @@ function openInvoiceBuilder(uid, offset, custom) {
     custom = true;
   }
 
-  IB = { userId: uid, start, end, dirty: {}, basis: (u.payBasis === 'monthly') ? 'monthly' : 'hourly' };
+  IB = { userId: uid, start, end, dirty: {}, basis: (u.payBasis === 'monthly') ? 'monthly' : 'hourly', lineItems: [] };
+
+  /* When editing an existing invoice (revise, or reviewing an employee's
+   * request), start from its current line items rather than blank — so the
+   * admin is adjusting what's there, not silently discarding it. */
+  if (REVISING_ID) {
+    IB.lineItems = D.invoiceLineItems
+      .filter(li => li.invoiceId === REVISING_ID)
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map(li => ({ type: li.lineType, label: li.label, amount: li.amount }));
+  }
 
   document.getElementById('ib-emp-name').textContent = u.name;
   document.getElementById('ib-from').value = start;
   document.getElementById('ib-to').value = end;
   document.getElementById('ib-basis').value = IB.basis;
   toggleIbBasisBlocks();
+  renderLineItemRows();
 
   /* The "Custom…" button opens with the date row already expanded. */
   setIbDatesOpen(!!custom);
@@ -5396,6 +5449,64 @@ function onIbBasisChange() {
   IB.dirty = {};
   toggleIbBasisBlocks();
   recomputeBuilder(true);
+}
+
+/* ============== LINE ITEMS (allowance / incentive / deduction) ==============
+ * Stored as a plain array on IB (not the DOM) so add/remove/reorder is just
+ * array mutation + a full re-render — simpler than trying to keep a dynamic
+ * set of DOM rows in sync by hand. */
+function renderLineItemRows() {
+  const list = document.getElementById('ib-lineitems-list');
+  const empty = document.getElementById('ib-lineitems-empty');
+  if (IB.lineItems.length === 0) {
+    list.innerHTML = '';
+    empty.style.display = '';
+    refreshBuilderTotals();
+    return;
+  }
+  empty.style.display = 'none';
+  list.innerHTML = IB.lineItems.map((li, idx) => `
+    <div class="li-row ${li.type === 'deduction' ? 'deduction' : ''}">
+      <select onchange="updateLineItem(${idx}, 'type', this.value)">
+        <option value="allowance" ${li.type === 'allowance' ? 'selected' : ''}>Allowance (+)</option>
+        <option value="incentive" ${li.type === 'incentive' ? 'selected' : ''}>Incentive (+)</option>
+        <option value="deduction" ${li.type === 'deduction' ? 'selected' : ''}>Deduction (−)</option>
+      </select>
+      <input type="text" placeholder="e.g. Internet allowance" value="${(li.label || '').replace(/"/g, '&quot;')}"
+        oninput="updateLineItem(${idx}, 'label', this.value)">
+      <input type="number" step="0.01" min="0" placeholder="0.00" value="${li.amount || ''}"
+        oninput="updateLineItem(${idx}, 'amount', this.value)">
+      <button class="btn btn-ghost btn-sm li-remove" onclick="removeLineItemRow(${idx})">Remove</button>
+    </div>`).join('');
+  refreshBuilderTotals();
+}
+
+function addLineItemRow() {
+  IB.lineItems.push({ type: 'allowance', label: '', amount: 0 });
+  renderLineItemRows();
+}
+
+function removeLineItemRow(idx) {
+  IB.lineItems.splice(idx, 1);
+  renderLineItemRows();
+}
+
+function updateLineItem(idx, field, value) {
+  if (!IB.lineItems[idx]) return;
+  IB.lineItems[idx][field] = (field === 'amount') ? (parseFloat(value) || 0) : value;
+  /* Re-render on type change only (so the deduction styling/select updates);
+   * label/amount just need totals refreshed, not a full row rebuild that
+   * would steal focus mid-typing. */
+  if (field === 'type') renderLineItemRows();
+  else refreshBuilderTotals();
+}
+
+/* Net effect of all line items: allowances + incentives, minus deductions. */
+function lineItemsNet(items) {
+  return round2(items.reduce((sum, li) => {
+    const amt = Number(li.amount) || 0;
+    return sum + (li.type === 'deduction' ? -amt : amt);
+  }, 0));
 }
 
 function closeInvoiceBuilder() {
@@ -5484,10 +5595,11 @@ function recomputeBuilder(reseed) {
       el.classList.remove('dirty');
     }
 
-    /* Other charge always starts blank — an allowance is never "computed",
-     * the admin adds it fresh each time it applies. */
-    document.getElementById('ib-other-label').value = 'Others';
-    document.getElementById('ib-other-amount').value = 0;
+    /* Line items are NOT reset here on purpose: unlike hours/rate, an
+     * allowance or deduction isn't derived from the date range or pay basis,
+     * so changing those shouldn't discard what the admin already typed. They
+     * only start blank when the builder is freshly opened for a brand-new
+     * invoice — see openInvoiceBuilder(). */
   }
   refreshBuilderTotals();
 }
@@ -5520,8 +5632,11 @@ function onIbFieldChange(field) {
 }
 
 function refreshBuilderTotals() {
+  /* renderLineItemRows() runs once during builder open, before the first
+   * recomputeBuilder() has produced IB.computed — nothing to total yet. */
+  if (!IB || !IB.computed) return;
   const c = IB.computed;
-  const otherAmt = ibNum('ib-other-amount');
+  const lineNet = lineItemsNet(IB.lineItems);
   let total;
 
   if (IB.basis === 'monthly') {
@@ -5529,7 +5644,7 @@ function refreshBuilderTotals() {
     const holHrs = ibNum('ib-holiday-m');
     const holRate = ibNum('ib-hol-rate-m');
     const holAmt = round2(holHrs * holRate);
-    total = round2(salary + holAmt + otherAmt);
+    total = round2(salary + holAmt + lineNet);
 
     document.getElementById('ib-monthly-salary-amt').textContent = currency(salary);
     document.getElementById('ib-holiday-m-amt').textContent = currency(holAmt);
@@ -5543,7 +5658,7 @@ function refreshBuilderTotals() {
     const regAmt = round2(reg * rate);
     const otAmt = round2(ot * rate);
     const holAmt = round2(hol * rate);
-    total = round2(regAmt + otAmt + holAmt + otherAmt);
+    total = round2(regAmt + otAmt + holAmt + lineNet);
 
     document.getElementById('ib-regular-amt').textContent = currency(regAmt);
     document.getElementById('ib-overtime-amt').textContent = currency(otAmt);
@@ -5574,8 +5689,13 @@ function buildInvoiceFromBuilder() {
   const c = IB.computed;
   const overridden = Object.values(IB.dirty).some(Boolean);
 
-  const otherLabel = (document.getElementById('ib-other-label').value || '').trim() || 'Others';
-  const otherAmount = ibNum('ib-other-amount');
+  /* Only carry through line items that actually have a label and a nonzero
+   * amount — an empty row the admin added but never filled in shouldn't
+   * print as a blank line on the invoice. */
+  const lineItems = IB.lineItems
+    .filter(li => (li.label || '').trim() && Number(li.amount) > 0)
+    .map(li => ({ type: li.type, label: li.label.trim(), amount: round2(Number(li.amount)) }));
+  const lineNet = lineItemsNet(lineItems);
 
   if (IB.basis === 'monthly') {
     const salary = ibNum('ib-monthly-salary');
@@ -5600,9 +5720,8 @@ function buildInvoiceFromBuilder() {
       rate: holRate,                /* kept for the Holiday line's hrs × rate */
       regularAmount: salary,
       holidayAmount: holAmt,
-      otherLabel,
-      otherAmount,
-      total: round2(salary + holAmt + otherAmount),
+      lineItems,
+      total: round2(salary + holAmt + lineNet),
       daysWorked: c.daysWorked,
       overridden
     };
@@ -5636,9 +5755,8 @@ function buildInvoiceFromBuilder() {
     rate,
     regularAmount: regAmt,
     holidayAmount: holAmt,
-    otherLabel,
-    otherAmount,
-    total: round2(regAmt + otAmt + holAmt + otherAmount),
+    lineItems,
+    total: round2(regAmt + otAmt + holAmt + lineNet),
     daysWorked: c.daysWorked,
     overridden
   };
@@ -5658,6 +5776,11 @@ function previewFromBuilder() {
 /* Sequential invoice number, zero-padded like the sample ("001"). */
 function nextInvoiceNo() {
   const nums = D.invoices
+    /* Requested-but-not-yet-reviewed invoices carry a temporary placeholder
+     * number (see requestInvoice()), not a real sequential one — counting
+     * them here would corrupt the sequence with a huge, timestamp-derived
+     * number. They get a real number assigned when the admin approves. */
+    .filter(i => i.workflow !== 'requested')
     .map(i => parseInt(String(i.invoiceNo).replace(/\D/g, ''), 10))
     .filter(n => isFinite(n));
   const next = (nums.length ? Math.max(...nums) : 0) + 1;
@@ -5666,9 +5789,15 @@ function nextInvoiceNo() {
 
 /* Renders the printable invoice. `existing` is a saved invoice row when we're
  * re-opening one from history (so the snapshot, not today's numbers, is shown). */
-function openInvoicePreview(inv, existing) {
+function openInvoicePreview(inv, existing, mode) {
   const u = inv.user;
-  const invoiceNo = existing ? existing.invoiceNo : nextInvoiceNo();
+  /* Request mode: the employee is previewing what they're about to submit —
+   * no real number exists until the admin approves, and nextInvoiceNo()
+   * can't be trusted here anyway (an employee only sees their own invoices,
+   * so their local "next" number would be wrong). */
+  const isRequest = mode === 'request';
+  const invoiceNo = isRequest ? 'Pending — assigned on approval'
+    : (existing ? existing.invoiceNo : nextInvoiceNo());
   const invoiceDate = existing ? existing.invoiceDate : today();
 
   /* When re-opening a saved invoice, trust the snapshot. */
@@ -5680,8 +5809,12 @@ function openInvoicePreview(inv, existing) {
   const excess   = existing ? existing.excessHours   : inv.excessHours;
   const rate     = existing ? existing.rate          : inv.rate;
   const total    = existing ? existing.totalAmount   : inv.total;
-  const otherLabel  = (existing ? existing.otherLabel  : inv.otherLabel)  || 'Others';
-  const otherAmount = (existing ? existing.otherAmount : inv.otherAmount) || 0;
+  /* A saved invoice keeps its line items in D.invoiceLineItems (looked up by
+   * id); a not-yet-saved preview carries them directly on inv. */
+  const lineItems = existing
+    ? D.invoiceLineItems.filter(li => li.invoiceId === existing.id).sort((a, b) => a.sortOrder - b.sortOrder)
+        .map(li => ({ type: li.lineType, label: li.label, amount: li.amount }))
+    : (inv.lineItems || []);
 
   const regAmt = round2(regular * rate);
   const otAmt  = round2(overtime * rate);
@@ -5753,16 +5886,22 @@ function openInvoicePreview(inv, existing) {
           ${excessRow}
   `;
 
-  /* Other charge — an ad hoc allowance/reimbursement, independent of pay
-   * basis. Only shown when actually used, so a plain invoice stays plain. */
-  const otherRow = otherAmount > 0 ? `
+  /* Additional line items — allowances/incentives print as a normal amount;
+   * deductions print with a minus sign and read visually distinct. Only
+   * shown when there's actually something to show, so a plain invoice with
+   * no extras stays plain. */
+  const lineItemRows = lineItems.map(li => {
+    const isDeduction = li.type === 'deduction';
+    const amtDisplay = isDeduction ? `−${currency(li.amount)}` : currency(li.amount);
+    return `
           <tr>
-            <td class="lab">${(otherLabel || 'OTHERS').toUpperCase()}</td>
+            <td class="lab"${isDeduction ? ' style="color:var(--vc-red);"' : ''}>${(li.label || 'OTHER').toUpperCase()}</td>
             <td class="mono">—</td>
             <td class="mono">—</td>
-            <td class="mono">${currency(otherAmount)}</td>
+            <td class="mono"${isDeduction ? ' style="color:var(--vc-red);"' : ''}>${amtDisplay}</td>
             <td></td>
-          </tr>` : '';
+          </tr>`;
+  }).join('');
 
   document.getElementById('invoice-print').innerHTML = `
     <div class="inv-sheet">
@@ -5801,7 +5940,7 @@ function openInvoicePreview(inv, existing) {
           </tr>
         </thead>
         <tbody>
-          ${invoiceRowsHtml}${otherRow}
+          ${invoiceRowsHtml}${lineItemRows}
           <tr class="inv-total">
             <td class="lab" style="text-align:right;">TOTAL</td>
             <td class="tot mono">${currency(total)}</td>
@@ -5833,15 +5972,23 @@ function openInvoicePreview(inv, existing) {
   const bits = [];
   if (excess > 0) bits.push(`${excess} excess hour${excess === 1 ? '' : 's'} recorded but not billed (over the ${round2(inv.cap)}-hr cap).`);
   if (inv.overridden) bits.push('Figures were manually adjusted before generating.');
+  if (isRequest) bits.push('Review your invoice, then submit it to your admin. A request cannot be withdrawn once submitted.');
   note.textContent = bits.join(' ');
 
   const saveBtn = document.getElementById('inv-save-btn');
-  if (existing) {
+  const requestBtn = document.getElementById('inv-request-btn');
+  if (isRequest) {
+    PENDING_INVOICE = null;          /* not an admin save */
+    saveBtn.style.display = 'none';
+    requestBtn.style.display = '';
+  } else if (existing) {
     PENDING_INVOICE = null;
     saveBtn.style.display = 'none';
+    requestBtn.style.display = 'none';
   } else {
     PENDING_INVOICE = { inv, invoiceNo, invoiceDate };
     saveBtn.style.display = '';
+    requestBtn.style.display = 'none';
   }
 
   document.getElementById('invoice-modal').classList.add('active');
@@ -5851,6 +5998,9 @@ function closeInvoiceModal() {
   document.getElementById('invoice-modal').classList.remove('active');
   PENDING_INVOICE = null;
   REVISING_ID = null;   /* closing the preview abandons an in-progress revise */
+  REQUEST_PREVIEW = null;  /* closing without submitting abandons the request */
+  const requestBtn = document.getElementById('inv-request-btn');
+  if (requestBtn) requestBtn.style.display = 'none';
 }
 
 /* Persist the invoice. Hours/rate are SNAPSHOTTED, so a later rate change or a
@@ -5859,13 +6009,45 @@ async function saveInvoice() {
   if (!PENDING_INVOICE) return;
   const { inv, invoiceNo, invoiceDate } = PENDING_INVOICE;
 
-  /* Revise-and-re-send path: update the existing record in place, bump its
-   * revision, and push it straight back to 'sent' so the employee sees the
-   * corrected version with a fresh chance to acknowledge or dispute. */
+  /* Revise-and-re-send path: update the existing record in place. Two cases
+   * share this path but behave slightly differently:
+   *   - orig.workflow === 'requested': this is the FIRST time it's being
+   *     sent (employee requested it, admin is now approving it). It gets a
+   *     REAL invoice number for the first time (it only had a placeholder),
+   *     and stays at revision 1.
+   *   - orig.workflow === 'sent' / 'disputed': a genuine revision of an
+   *     already-sent invoice — bump the revision, keep the existing number. */
   if (REVISING_ID) {
     const orig = D.invoices.find(x => x.id === REVISING_ID);
     if (orig) {
+      const isFirstApproval = orig.workflow === 'requested';
+      const finalInvoiceNo = isFirstApproval ? nextInvoiceNo() : orig.invoiceNo;
+
+      /* When approving an employee's request: if the admin changed NOTHING
+       * versus what the employee submitted, the request itself already was
+       * their sign-off on these exact figures — so the invoice completes
+       * immediately as acknowledged, no second confirmation loop. Any change
+       * at all (hours, rate, dates, basis, or any added line item — requests
+       * always arrive with zero line items) means the employee is seeing new
+       * numbers, so it goes out as 'sent' for a fresh acknowledge/dispute. */
+      let approvedUnchanged = false;
+      if (isFirstApproval) {
+        approvedUnchanged =
+          round2(inv.rate) === round2(orig.rate) &&
+          round2(inv.regularHours) === round2(orig.regularHours) &&
+          round2(inv.overtimeHours) === round2(orig.overtimeHours) &&
+          round2(inv.holidayHours) === round2(orig.holidayHours) &&
+          round2(inv.total) === round2(orig.totalAmount) &&
+          (inv.payBasis || 'hourly') === (orig.payBasis || 'hourly') &&
+          (round2(inv.monthlySalary || 0) === round2(orig.monthlySalary || 0)) &&
+          inv.start === orig.periodStart && inv.end === orig.periodEnd &&
+          (inv.lineItems || []).length === 0;
+      }
+      const nowIso = new Date().toISOString();
+      const finalWorkflow = approvedUnchanged ? 'acknowledged' : 'sent';
+
       const patch = {
+        invoice_no: finalInvoiceNo,
         rate: inv.rate,
         regular_hours: inv.regularHours,
         overtime_hours: inv.overtimeHours,
@@ -5874,32 +6056,40 @@ async function saveInvoice() {
         cap_hours: inv.cap,
         pay_basis: inv.payBasis || 'hourly',
         monthly_salary: (inv.payBasis === 'monthly') ? inv.monthlySalary : null,
-        other_label: inv.otherLabel || 'Others',
-        other_amount: inv.otherAmount || 0,
         total_amount: inv.total,
-        revision: (orig.revision || 1) + 1,
-        workflow: 'sent',
-        sent_at: new Date().toISOString(),
+        revision: isFirstApproval ? (orig.revision || 1) : (orig.revision || 1) + 1,
+        workflow: finalWorkflow,
+        sent_at: nowIso,
         disputed_at: null,
         dispute_reason: null,
-        acknowledged_at: null,
+        acknowledged_at: approvedUnchanged ? nowIso : null,
         notes: inv.overridden ? 'Hours/rate manually adjusted on revision.' : orig.notes
       };
       const { error } = await sb.from('invoices').update(patch).eq('id', REVISING_ID);
-      if (error) { toast('Could not save revision: ' + error.message); return; }
+      if (error) { toast('Could not save: ' + error.message); return; }
+
+      /* Replace this invoice's line items wholesale: delete what's there,
+       * insert the current set. Simpler and safer than diffing row-by-row. */
+      const liError = await replaceInvoiceLineItems(REVISING_ID, inv.lineItems);
+      if (liError) { toast('Invoice saved, but line items failed: ' + liError); }
+
       Object.assign(orig, {
+        invoiceNo: finalInvoiceNo,
         rate: inv.rate, regularHours: inv.regularHours, overtimeHours: inv.overtimeHours,
         holidayHours: inv.holidayHours, excessHours: inv.excessHours, capHours: inv.cap,
         payBasis: patch.pay_basis, monthlySalary: patch.monthly_salary,
-        otherLabel: patch.other_label, otherAmount: patch.other_amount,
-        totalAmount: inv.total, revision: patch.revision, workflow: 'sent',
-        sentAt: patch.sent_at, disputedAt: null, disputeReason: null, acknowledgedAt: null,
+        totalAmount: inv.total, revision: patch.revision, workflow: finalWorkflow,
+        sentAt: patch.sent_at, disputedAt: null, disputeReason: null,
+        acknowledgedAt: patch.acknowledged_at,
         notes: patch.notes
       });
-      const no = orig.invoiceNo;
       REVISING_ID = null;
       closeInvoiceModal();
-      toast(`Invoice #${no} revised (rev ${patch.revision}) and re-sent`);
+      toast(isFirstApproval
+        ? (approvedUnchanged
+            ? `Invoice #${finalInvoiceNo} approved as submitted — complete, no acknowledgement needed`
+            : `Invoice #${finalInvoiceNo} approved with changes and sent — awaiting employee acknowledgement`)
+        : `Invoice #${finalInvoiceNo} revised (rev ${patch.revision}) and re-sent`);
       renderInvoiceHistory();
       return;
     }
@@ -5925,8 +6115,6 @@ async function saveInvoice() {
     cap_hours: inv.cap,
     pay_basis: inv.payBasis || 'hourly',
     monthly_salary: (inv.payBasis === 'monthly') ? inv.monthlySalary : null,
-    other_label: inv.otherLabel || 'Others',
-    other_amount: inv.otherAmount || 0,
     total_amount: inv.total,
     status: 'issued',
     workflow: 'draft',
@@ -5936,9 +6124,37 @@ async function saveInvoice() {
 
   if (error) { toast('Could not save invoice: ' + error.message); return; }
   D.invoices.push(invoiceFromRow(data));
+
+  const liError = await replaceInvoiceLineItems(data.id, inv.lineItems);
+  if (liError) { toast('Invoice saved, but line items failed: ' + liError); }
+
   closeInvoiceModal();
   toast(`Invoice #${invoiceNo} saved as draft — click Send to release it`);
   renderInvoiceHistory();
+}
+
+/* Deletes any existing line items for this invoice and inserts the current
+ * set. Used by both the fresh-save and revise/approve paths so an invoice's
+ * line items always exactly match what's in the builder when saved — no
+ * partial updates to reconcile. Returns an error message string, or null. */
+async function replaceInvoiceLineItems(invoiceId, lineItems) {
+  const { error: delError } = await sb.from('invoice_line_items').delete().eq('invoice_id', invoiceId);
+  if (delError) return delError.message;
+  D.invoiceLineItems = D.invoiceLineItems.filter(li => li.invoiceId !== invoiceId);
+
+  if (!lineItems || lineItems.length === 0) return null;
+
+  const rows = lineItems.map((li, idx) => ({
+    invoice_id: invoiceId,
+    line_type: li.type,
+    label: li.label,
+    amount: li.amount,
+    sort_order: idx
+  }));
+  const { data, error: insError } = await sb.from('invoice_line_items').insert(rows).select();
+  if (insError) return insError.message;
+  D.invoiceLineItems.push(...(data || []).map(invoiceLineItemFromRow));
+  return null;
 }
 
 function renderInvoiceHistory() {
@@ -5958,14 +6174,29 @@ function renderInvoiceHistory() {
       ? ` <span class="badge edited" style="font-size:9px;" title="${i.notes}">adjusted</span>` : '';
     const revTag = i.revision > 1
       ? ` <span class="badge edited" style="font-size:9px;">rev ${i.revision}</span>` : '';
-    const otherTag = i.otherAmount > 0
-      ? ` <span class="badge holiday" style="font-size:9px;" title="${i.otherLabel}">+${currency(i.otherAmount)} ${i.otherLabel}</span>` : '';
+
+    /* Summarize this invoice's line items as a single badge: net effect plus
+     * a title listing each one, rather than one badge per line (which would
+     * crowd the row once there are several). */
+    const items = D.invoiceLineItems.filter(li => li.invoiceId === i.id);
+    let lineTag = '';
+    if (items.length > 0) {
+      const net = round2(items.reduce((s, li) => s + (li.lineType === 'deduction' ? -li.amount : li.amount), 0));
+      const summary = items.map(li => `${li.lineType === 'deduction' ? '−' : '+'}${currency(li.amount)} ${li.label}`).join('; ');
+      const sign = net < 0 ? '−' : '+';
+      const badgeClass = net < 0 ? 'absent' : 'holiday';
+      lineTag = ` <span class="badge ${badgeClass}" style="font-size:9px;" title="${summary.replace(/"/g,'&quot;')}">${sign}${currency(Math.abs(net))} (${items.length} item${items.length===1?'':'s'})</span>`;
+    }
+
+    /* A requested-but-not-yet-approved invoice only has a temporary
+     * placeholder number — show "Pending" rather than the raw placeholder. */
+    const noDisplay = (i.workflow === 'requested') ? 'Pending' : `#${i.invoiceNo}`;
 
     return `<tr>
-      <td class="mono"><strong style="color:var(--ink)">#${i.invoiceNo}</strong>${revTag}</td>
+      <td class="mono"><strong style="color:var(--ink)">${noDisplay}</strong>${revTag}</td>
       <td>${u ? u.name : 'Unknown'}</td>
       <td>${fmtDate(i.periodStart)} – ${fmtDate(i.periodEnd)}</td>
-      <td class="mono">${hrs}${excessTag}${editTag}${otherTag}</td>
+      <td class="mono">${hrs}${excessTag}${editTag}${lineTag}</td>
       <td class="mono"><strong style="color:var(--vc-navy)">${currency(i.totalAmount)}</strong></td>
       <td>${invWorkflowBadge(i)}</td>
       <td><div class="actions-cell">${adminInvoiceActions(i)}</div></td>
@@ -5977,6 +6208,7 @@ function renderInvoiceHistory() {
 function invWorkflowBadge(i) {
   switch (i.workflow) {
     case 'draft':        return '<span class="badge out">Draft</span>';
+    case 'requested':    return '<span class="badge pending" title="Employee-submitted, awaiting admin review">Requested</span>';
     case 'sent':         return '<span class="badge pending">Sent · awaiting response</span>';
     case 'acknowledged': return '<span class="badge approved">Acknowledged</span>';
     case 'disputed':     return '<span class="badge absent">Disputed</span>';
@@ -5991,6 +6223,9 @@ function adminInvoiceActions(i) {
   if (i.workflow === 'draft') {
     extra = `<button class="btn btn-sm" onclick="sendInvoice('${i.id}')">Send</button>
              <button class="btn btn-danger btn-sm" onclick="deleteInvoice('${i.id}')">Delete</button>`;
+  } else if (i.workflow === 'requested') {
+    extra = `<button class="btn btn-sm" onclick="reviewRequestedInvoice('${i.id}')" title="Add line items if needed, then approve and send">Review</button>
+             <button class="btn btn-danger btn-sm" onclick="deleteInvoice('${i.id}')">Delete</button>`;
   } else if (i.workflow === 'sent') {
     extra = `<button class="btn btn-ghost btn-sm" onclick="reviseInvoice('${i.id}')" title="Pull the invoice back and revise it">Revise</button>`;
   } else if (i.workflow === 'acknowledged') {
@@ -6000,6 +6235,24 @@ function adminInvoiceActions(i) {
              <button class="btn btn-ghost btn-sm" onclick="reviseInvoice('${i.id}')">Revise &amp; re-send</button>`;
   }
   return view + extra;
+}
+
+/* Opens the requested invoice in the Invoice Builder, pre-filled with the
+ * employee's calculated hours, so the admin can add allowance/incentive/
+ * deduction line items before approving. Shares the same REVISING_ID
+ * mechanism as reviseInvoice() — saveInvoice() distinguishes a first-time
+ * approval from a genuine revision by checking the original workflow. */
+function reviewRequestedInvoice(id) {
+  const i = D.invoices.find(x => x.id === id);
+  if (!i) return;
+  REVISING_ID = id;
+  openInvoiceBuilder(i.userId, 0, true);
+  IB.start = i.periodStart;
+  IB.end = i.periodEnd;
+  document.getElementById('ib-from').value = i.periodStart;
+  document.getElementById('ib-to').value = i.periodEnd;
+  onIbDateChange();
+  toast(`Reviewing ${D.users.find(u=>u.id===i.userId)?.name || 'employee'}'s request — add any line items, then Preview → Save to approve and send`);
 }
 
 /* Re-open a saved invoice from its snapshot (used by admin AND employee).
@@ -6077,9 +6330,13 @@ async function refreshMyInvoices() {
   const btn = document.getElementById('emp-inv-refresh-btn');
   if (btn) { btn.disabled = true; btn.textContent = 'Refreshing…'; }
   try {
-    const { data, error } = await sb.from('invoices').select('*');
-    if (error) { toast('Could not refresh invoices: ' + error.message); return; }
-    D.invoices = (data || []).map(invoiceFromRow);
+    const [invRes, liRes] = await Promise.all([
+      sb.from('invoices').select('*'),
+      sb.from('invoice_line_items').select('*')
+    ]);
+    if (invRes.error) { toast('Could not refresh invoices: ' + invRes.error.message); return; }
+    D.invoices = (invRes.data || []).map(invoiceFromRow);
+    if (liRes && !liRes.error) D.invoiceLineItems = (liRes.data || []).map(invoiceLineItemFromRow);
     renderEmpInvoices();
   } catch (e) {
     toast('Could not refresh invoices');
@@ -6088,11 +6345,162 @@ async function refreshMyInvoices() {
   }
 }
 
+/* ============== EMPLOYEE-INITIATED INVOICE REQUEST ==============
+ * The employee can request an invoice for their most recently COMPLETED
+ * cutoff (and only that one). One request per cutoff; it cannot be withdrawn.
+ * The request carries a system-calculated snapshot (same computeInvoice()
+ * math the admin's builder uses) and lands in workflow='requested' for the
+ * admin to review, add line items to, and approve. */
+function empRequestableCutoff() {
+  const u = currentUser();
+  if (!u) return null;
+  const cyc = currentCycle(u);
+  if (!cyc) return null;   /* no cutoff configured for this employee */
+  /* The current cycle is by definition still in progress — the most recently
+   * COMPLETED one is exactly one step back. */
+  return shiftCycle(u, cyc, -1);
+}
+
+function renderEmpRequestPanel() {
+  const panel = document.getElementById('emp-request-panel');
+  if (!panel) return;
+  const u = currentUser();
+  const cyc = empRequestableCutoff();
+
+  if (!cyc) {
+    panel.innerHTML = `<span style="font-size:12px; color:var(--ink-muted);">
+      Invoice requests aren't available yet — no billing cutoff is configured for your account. Please contact your admin.</span>`;
+    return;
+  }
+
+  /* One request/invoice per cutoff: if ANY invoice already covers this exact
+   * period (requested, draft the admin already started, sent, etc.), the
+   * button goes away and the note explains why. */
+  const existing = D.invoices.find(i =>
+    i.userId === u.id && i.periodStart === cyc.start && i.periodEnd === cyc.end);
+
+  const periodTxt = `${fmtDate(cyc.start)} – ${fmtDate(cyc.end)}`;
+
+  if (existing) {
+    const stateTxt = existing.workflow === 'requested'
+      ? 'has been requested and is awaiting admin review'
+      : 'already has an invoice';
+    panel.innerHTML = `<div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+      <span style="font-size:12px; color:var(--ink-soft);">
+        Your last completed cutoff (<strong style="color:var(--ink)">${periodTxt}</strong>) ${stateTxt}.
+      </span>
+    </div>`;
+    return;
+  }
+
+  panel.innerHTML = `<div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+    <span style="font-size:12px; color:var(--ink-soft);">
+      Your last completed cutoff: <strong style="color:var(--ink)">${periodTxt}</strong> — you can request your invoice for this period.
+    </span>
+    <button class="btn btn-navy btn-sm" onclick="requestInvoice()">Request invoice</button>
+  </div>`;
+}
+
+function requestInvoice() {
+  const u = currentUser();
+  const cyc = empRequestableCutoff();
+  if (!u || !cyc) return;
+
+  /* Re-check for duplicates right before previewing (the page could have
+   * been open a while). */
+  const existing = D.invoices.find(i =>
+    i.userId === u.id && i.periodStart === cyc.start && i.periodEnd === cyc.end);
+  if (existing) { toast('An invoice already exists for that period.'); renderEmpRequestPanel(); return; }
+
+  /* Same math the admin's builder runs. Shown to the employee as the real
+   * rendered invoice (not a text popup) so they see exactly what they're
+   * submitting, with a Submit button in place of the admin's Save. */
+  const c = computeInvoice(u, cyc.start, cyc.end);
+  const isMonthly = (u.payBasis === 'monthly') && !!u.monthlySalary;
+
+  const inv = {
+    user: u,
+    start: cyc.start,
+    end: cyc.end,
+    entries: c.entries,
+    workedHours: c.workedHours,
+    payBasis: isMonthly ? 'monthly' : 'hourly',
+    monthlySalary: isMonthly ? u.monthlySalary : null,
+    regularHours: isMonthly ? 0 : c.regularHours,
+    overtimeHours: 0,
+    holidayHours: c.holidayHours,
+    excessHours: isMonthly ? 0 : c.excessHours,
+    holidayDates: c.holidayDates,
+    cap: isMonthly ? null : c.cap,
+    rate: c.rate,
+    regularAmount: isMonthly ? u.monthlySalary : c.regularAmount,
+    holidayAmount: c.holidayAmount,
+    lineItems: [],
+    total: isMonthly ? round2(u.monthlySalary + c.holidayAmount) : c.total,
+    daysWorked: c.daysWorked,
+    overridden: false
+  };
+
+  REQUEST_PREVIEW = { inv, cyc };
+  openInvoicePreview(inv, null, 'request');
+}
+
+/* Called from the preview modal's Submit button — this is the actual
+ * submission; everything before it was just the review step. */
+async function submitInvoiceRequest() {
+  if (!REQUEST_PREVIEW) return;
+  const { inv, cyc } = REQUEST_PREVIEW;
+  const u = inv.user;
+
+  /* Final duplicate check at the moment of truth. */
+  const existing = D.invoices.find(i =>
+    i.userId === u.id && i.periodStart === cyc.start && i.periodEnd === cyc.end);
+  if (existing) { toast('An invoice already exists for that period.'); closeInvoiceModal(); renderEmpInvoices(); return; }
+
+  const btn = document.getElementById('inv-request-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Submitting…'; }
+
+  const { data, error } = await sb.from('invoices').insert({
+    /* Placeholder number — a real sequential one is assigned when the admin
+     * approves. Unique (timestamp-based) so the DB's uniqueness index on
+     * invoice_no can't collide if two employees request at the same time. */
+    invoice_no: 'REQ-' + Date.now(),
+    user_id: u.id,
+    period_start: cyc.start,
+    period_end: cyc.end,
+    invoice_date: today(),
+    rate: inv.rate,
+    regular_hours: inv.regularHours,
+    overtime_hours: inv.overtimeHours,
+    holiday_hours: inv.holidayHours,
+    excess_hours: inv.excessHours,
+    cap_hours: inv.cap,
+    pay_basis: inv.payBasis,
+    monthly_salary: inv.monthlySalary,
+    total_amount: inv.total,
+    status: 'issued',
+    workflow: 'requested',
+    requested_at: new Date().toISOString(),
+    requested_by: u.id,
+    created_by: u.id
+  }).select().single();
+
+  if (btn) { btn.disabled = false; btn.textContent = 'Submit request'; }
+  if (error) { toast('Could not submit request: ' + error.message); return; }
+
+  D.invoices.push(invoiceFromRow(data));
+  closeInvoiceModal();
+  toast('Invoice request submitted — your admin will review it.');
+  renderEmpInvoices();
+}
+
 function renderEmpInvoices() {
+  renderEmpRequestPanel();
   const tbody = document.getElementById('emp-invoice-rows');
   if (!tbody) return;
   const uid = D.session;
-  /* Employees never see drafts — only what's been released to them. */
+  /* Employees never see drafts — only what's been released to them, plus
+   * their own pending requests. */
   const rows = D.invoices
     .filter(i => i.userId === uid && i.workflow !== 'draft')
     .sort((a, b) => (b.sentAt || b.createdAt || '').localeCompare(a.sentAt || a.createdAt || ''));
@@ -6106,16 +6514,25 @@ function renderEmpInvoices() {
     const hrs = round2(i.regularHours + i.overtimeHours + i.holidayHours);
     const revTag = i.revision > 1 ? ` <span class="badge edited" style="font-size:9px;">rev ${i.revision}</span>` : '';
 
-    let actions = `<button class="btn btn-ghost btn-sm" onclick="viewInvoice('${i.id}')">View / download</button>`;
-    if (i.workflow === 'sent') {
-      actions += `<button class="btn btn-sm" onclick="acknowledgeInvoice('${i.id}')" title="Confirm this invoice is correct">Acknowledge</button>
-                  <button class="btn btn-danger btn-sm" onclick="openDisputeModal('${i.id}')">Dispute</button>`;
-    } else if (i.workflow === 'disputed') {
-      actions += `<span class="badge absent" style="font-size:9px;" title="${(i.disputeReason||'').replace(/"/g,'&quot;')}">Awaiting revision</span>`;
+    let actions = '';
+    if (i.workflow === 'requested') {
+      /* Not a real invoice yet — nothing to view/acknowledge until the admin
+       * approves it. */
+      actions = `<span style="font-size:11px; color:var(--ink-muted);">Pending admin review</span>`;
+    } else {
+      actions = `<button class="btn btn-ghost btn-sm" onclick="viewInvoice('${i.id}')">View / download</button>`;
+      if (i.workflow === 'sent') {
+        actions += `<button class="btn btn-sm" onclick="acknowledgeInvoice('${i.id}')" title="Confirm this invoice is correct">Acknowledge</button>
+                    <button class="btn btn-danger btn-sm" onclick="openDisputeModal('${i.id}')">Dispute</button>`;
+      } else if (i.workflow === 'disputed') {
+        actions += `<span class="badge absent" style="font-size:9px;" title="${(i.disputeReason||'').replace(/"/g,'&quot;')}">Awaiting revision</span>`;
+      }
     }
 
+    const noDisplay = (i.workflow === 'requested') ? '<em style="font-weight:400; color:var(--ink-muted);">Pending</em>' : `#${i.invoiceNo}`;
+
     return `<tr>
-      <td class="mono"><strong style="color:var(--ink)">#${i.invoiceNo}</strong>${revTag}</td>
+      <td class="mono"><strong style="color:var(--ink)">${noDisplay}</strong>${revTag}</td>
       <td>${fmtDate(i.periodStart)} – ${fmtDate(i.periodEnd)}</td>
       <td class="mono">${hrs}</td>
       <td class="mono"><strong style="color:var(--vc-navy)">${currency(i.totalAmount)}</strong></td>
