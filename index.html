@@ -1749,6 +1749,7 @@
         </div>
       </div>
 
+      <div id="ib-request-note" style="display:none; padding:10px 12px; background:#FFF7E6; border-left:3px solid var(--vc-orange); border-radius:4px; font-size:12px; color:var(--ink); margin-bottom:16px;"></div>
       <div id="ib-context" style="padding:9px 12px; background:var(--paper); border:1px solid var(--line); border-radius:4px; font-size:11px; color:var(--ink-soft); margin-bottom:16px;"></div>
 
       <div id="ib-hourly-block">
@@ -1857,6 +1858,15 @@
     </div>
     <div class="modal-body" style="background:var(--paper); max-height:72vh; overflow:auto;">
       <div id="invoice-print"></div>
+      <div id="inv-request-concern-wrap" class="no-print" style="display:none; margin-top:12px; padding:12px 14px; background:var(--surface); border:1px solid var(--line); border-radius:6px;">
+        <label style="display:block; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-muted); margin-bottom:6px;">
+          Something look off? <span style="font-weight:400; text-transform:none; letter-spacing:normal;">(optional — flag it for your admin to review)</span>
+        </label>
+        <textarea id="inv-request-concern" rows="2" style="width:100%;" placeholder="e.g. My approved COA for Jul 10 doesn't seem to be reflected in the hours."></textarea>
+        <p style="font-size:10px; color:var(--ink-muted); margin:6px 0 0;">
+          If you flag a concern, the invoice will come back to you for confirmation after your admin reviews it — even if the figures stay the same.
+        </p>
+      </div>
     </div>
     <div class="modal-footer no-print">
       <span id="inv-excess-note" style="flex:1; font-size:11px; color:var(--vc-red);"></span>
@@ -1978,6 +1988,10 @@ function invoiceFromRow(r) {
      * generating directly. */
     requestedAt: r.requested_at || null,
     requestedBy: r.requested_by || null,
+    /* Optional concern the employee attached when requesting — e.g. "my
+     * approved COA for Jul 10 isn't reflected". Shown to the admin during
+     * review; also blocks the unchanged-approval auto-complete. */
+    requestNote: r.request_note || null,
     createdAt: r.created_at
   };
 }
@@ -5423,6 +5437,9 @@ function openInvoiceBuilder(uid, offset, custom) {
   document.getElementById('ib-from').value = start;
   document.getElementById('ib-to').value = end;
   document.getElementById('ib-basis').value = IB.basis;
+  /* Concern banner is only meaningful when reviewing a request that has one —
+   * reviewRequestedInvoice() fills and shows it after this runs. */
+  document.getElementById('ib-request-note').style.display = 'none';
   toggleIbBasisBlocks();
   renderLineItemRows();
 
@@ -5977,18 +5994,23 @@ function openInvoicePreview(inv, existing, mode) {
 
   const saveBtn = document.getElementById('inv-save-btn');
   const requestBtn = document.getElementById('inv-request-btn');
+  const concernWrap = document.getElementById('inv-request-concern-wrap');
   if (isRequest) {
     PENDING_INVOICE = null;          /* not an admin save */
     saveBtn.style.display = 'none';
     requestBtn.style.display = '';
+    concernWrap.style.display = '';
+    document.getElementById('inv-request-concern').value = '';
   } else if (existing) {
     PENDING_INVOICE = null;
     saveBtn.style.display = 'none';
     requestBtn.style.display = 'none';
+    concernWrap.style.display = 'none';
   } else {
     PENDING_INVOICE = { inv, invoiceNo, invoiceDate };
     saveBtn.style.display = '';
     requestBtn.style.display = 'none';
+    concernWrap.style.display = 'none';
   }
 
   document.getElementById('invoice-modal').classList.add('active');
@@ -6033,6 +6055,10 @@ async function saveInvoice() {
       let approvedUnchanged = false;
       if (isFirstApproval) {
         approvedUnchanged =
+          /* A flagged concern means the employee did NOT sign off on these
+           * figures — even an as-is approval must go back to them for a
+           * formal acknowledge/dispute, never silently complete. */
+          !orig.requestNote &&
           round2(inv.rate) === round2(orig.rate) &&
           round2(inv.regularHours) === round2(orig.regularHours) &&
           round2(inv.overtimeHours) === round2(orig.overtimeHours) &&
@@ -6192,8 +6218,12 @@ function renderInvoiceHistory() {
      * placeholder number — show "Pending" rather than the raw placeholder. */
     const noDisplay = (i.workflow === 'requested') ? 'Pending' : `#${i.invoiceNo}`;
 
+    /* Employee flagged a computation concern with their request. */
+    const concernTag = (i.workflow === 'requested' && i.requestNote)
+      ? ` <span class="badge absent" style="font-size:9px;" title="${i.requestNote.replace(/"/g,'&quot;')}">⚠ concern raised</span>` : '';
+
     return `<tr>
-      <td class="mono"><strong style="color:var(--ink)">${noDisplay}</strong>${revTag}</td>
+      <td class="mono"><strong style="color:var(--ink)">${noDisplay}</strong>${revTag}${concernTag}</td>
       <td>${u ? u.name : 'Unknown'}</td>
       <td>${fmtDate(i.periodStart)} – ${fmtDate(i.periodEnd)}</td>
       <td class="mono">${hrs}${excessTag}${editTag}${lineTag}</td>
@@ -6252,6 +6282,15 @@ function reviewRequestedInvoice(id) {
   document.getElementById('ib-from').value = i.periodStart;
   document.getElementById('ib-to').value = i.periodEnd;
   onIbDateChange();
+  /* If the employee flagged a concern with their request, put it front and
+   * center while the admin reviews — this is exactly the moment it matters. */
+  const noteEl = document.getElementById('ib-request-note');
+  if (i.requestNote) {
+    noteEl.innerHTML = `<strong>⚠ ${D.users.find(u=>u.id===i.userId)?.name || 'Employee'} flagged a concern with this request:</strong><br>&ldquo;${i.requestNote.replace(/</g,'&lt;')}&rdquo;`;
+    noteEl.style.display = '';
+  } else {
+    noteEl.style.display = 'none';
+  }
   toast(`Reviewing ${D.users.find(u=>u.id===i.userId)?.name || 'employee'}'s request — add any line items, then Preview → Save to approve and send`);
 }
 
@@ -6460,6 +6499,8 @@ async function submitInvoiceRequest() {
   const btn = document.getElementById('inv-request-btn');
   if (btn) { btn.disabled = true; btn.textContent = 'Submitting…'; }
 
+  const concern = (document.getElementById('inv-request-concern').value || '').trim() || null;
+
   const { data, error } = await sb.from('invoices').insert({
     /* Placeholder number — a real sequential one is assigned when the admin
      * approves. Unique (timestamp-based) so the DB's uniqueness index on
@@ -6482,6 +6523,7 @@ async function submitInvoiceRequest() {
     workflow: 'requested',
     requested_at: new Date().toISOString(),
     requested_by: u.id,
+    request_note: concern,
     created_by: u.id
   }).select().single();
 
@@ -6490,7 +6532,9 @@ async function submitInvoiceRequest() {
 
   D.invoices.push(invoiceFromRow(data));
   closeInvoiceModal();
-  toast('Invoice request submitted — your admin will review it.');
+  toast(concern
+    ? 'Invoice request submitted with your concern — your admin will review it.'
+    : 'Invoice request submitted — your admin will review it.');
   renderEmpInvoices();
 }
 
@@ -6519,6 +6563,9 @@ function renderEmpInvoices() {
       /* Not a real invoice yet — nothing to view/acknowledge until the admin
        * approves it. */
       actions = `<span style="font-size:11px; color:var(--ink-muted);">Pending admin review</span>`;
+      if (i.requestNote) {
+        actions += ` <span class="badge absent" style="font-size:9px;" title="${i.requestNote.replace(/"/g,'&quot;')}">⚠ concern raised</span>`;
+      }
     } else {
       actions = `<button class="btn btn-ghost btn-sm" onclick="viewInvoice('${i.id}')">View / download</button>`;
       if (i.workflow === 'sent') {
