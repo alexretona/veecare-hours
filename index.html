@@ -830,6 +830,7 @@
       <span class="role-pill">Employee</span>
       <div class="avatar" id="emp-avatar">M</div>
       <span id="emp-name">Maria</span>
+      <button class="btn btn-ghost btn-sm" onclick="openPasswordModal()">Change password</button>
       <button class="btn btn-ghost btn-sm" onclick="logout()">Sign out</button>
     </div>
   </div>
@@ -1015,6 +1016,7 @@
       <span class="role-pill owner">Owner</span>
       <div class="avatar owner">A</div>
       <span>Admin</span>
+      <button class="btn btn-ghost btn-sm" onclick="openPasswordModal()">Change password</button>
       <button class="btn btn-ghost btn-sm" onclick="logout()">Sign out</button>
     </div>
   </div>
@@ -1633,6 +1635,42 @@
 </div>
 
 <!-- TERMINATE EMPLOYEE -->
+<!-- CHANGE PASSWORD -->
+<div class="modal-backdrop" id="password-modal">
+  <div class="modal" style="max-width:430px;">
+    <div class="modal-header">
+      <div class="modal-title">Change password</div>
+      <button class="modal-close" onclick="closePasswordModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12px; color:var(--ink-soft); margin:0 0 14px;">
+        Signed in as <strong id="pw-account-email" style="color:var(--ink);"></strong>
+      </p>
+      <div class="field">
+        <label>Current password</label>
+        <input type="password" id="pw-current" autocomplete="current-password" placeholder="Your password right now">
+      </div>
+      <div class="field">
+        <label>New password</label>
+        <input type="password" id="pw-new" autocomplete="new-password" placeholder="At least 8 characters" oninput="updatePwHint()">
+        <div id="pw-hint" style="font-size:10px; color:var(--ink-muted); margin-top:4px;">Use at least 8 characters.</div>
+      </div>
+      <div class="field">
+        <label>Confirm new password</label>
+        <input type="password" id="pw-confirm" autocomplete="new-password" placeholder="Type it again" oninput="updatePwHint()">
+      </div>
+      <label style="display:flex; align-items:center; gap:7px; font-size:11px; color:var(--ink-soft); cursor:pointer; margin-bottom:10px;">
+        <input type="checkbox" id="pw-show" onchange="togglePwVisibility()"> Show passwords
+      </label>
+      <div id="pw-error" style="display:none; padding:9px 12px; background:var(--danger-soft); border-left:3px solid var(--danger); border-radius:4px; font-size:12px; color:var(--ink);"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm" onclick="closePasswordModal()">Cancel</button>
+      <button class="btn btn-sm" id="pw-save-btn" onclick="changePassword()">Update password</button>
+    </div>
+  </div>
+</div>
+
 <!-- IN-APP CONFIRM
      Replaces window.confirm() for critical actions. Browsers let a user tick
      "prevent this page from creating more dialogs" after a few native popups;
@@ -2841,6 +2879,119 @@ async function handleSignup() {
   if (btn) { btn.disabled = false; btn.textContent = 'Create account'; }
   toast('Account created. Welcome to VeeCare Staffing Solutions Hours.');
   routeToApp({ id: data.user.id, name, role: 'employee' });
+}
+
+/* ============== CHANGE PASSWORD ==============
+ * Self-service only: a user changes their OWN password. Supabase's
+ * updateUser() authenticates via the current session, so it can't be used to
+ * change anyone else's — resetting another person's password needs the
+ * service_role key, which must never be shipped to a browser. */
+const MIN_PASSWORD_LEN = 8;
+
+async function openPasswordModal() {
+  document.getElementById('pw-current').value = '';
+  document.getElementById('pw-new').value = '';
+  document.getElementById('pw-confirm').value = '';
+  document.getElementById('pw-show').checked = false;
+  togglePwVisibility();
+  showPwError('');
+  updatePwHint();
+
+  /* Show which account this will affect — the authoritative email comes from
+   * the auth session, not the profile row. */
+  const emailEl = document.getElementById('pw-account-email');
+  emailEl.textContent = '…';
+  try {
+    const { data } = await sb.auth.getUser();
+    emailEl.textContent = (data && data.user && data.user.email) || (currentUser() && currentUser().username) || 'your account';
+  } catch (e) {
+    emailEl.textContent = (currentUser() && currentUser().username) || 'your account';
+  }
+
+  document.getElementById('password-modal').classList.add('active');
+  setTimeout(() => { try { document.getElementById('pw-current').focus(); } catch (e) {} }, 60);
+}
+
+function closePasswordModal() {
+  document.getElementById('password-modal').classList.remove('active');
+  /* Don't leave typed passwords sitting in the DOM after closing. */
+  document.getElementById('pw-current').value = '';
+  document.getElementById('pw-new').value = '';
+  document.getElementById('pw-confirm').value = '';
+}
+
+function togglePwVisibility() {
+  const show = document.getElementById('pw-show').checked;
+  ['pw-current', 'pw-new', 'pw-confirm'].forEach(id => {
+    document.getElementById(id).type = show ? 'text' : 'password';
+  });
+}
+
+function showPwError(msg) {
+  const el = document.getElementById('pw-error');
+  el.textContent = msg || '';
+  el.style.display = msg ? '' : 'none';
+}
+
+/* Live feedback while typing, so problems surface before they hit Save. */
+function updatePwHint() {
+  const nw = document.getElementById('pw-new').value;
+  const cf = document.getElementById('pw-confirm').value;
+  const hint = document.getElementById('pw-hint');
+  if (!nw) {
+    hint.textContent = `Use at least ${MIN_PASSWORD_LEN} characters.`;
+    hint.style.color = 'var(--ink-muted)';
+  } else if (nw.length < MIN_PASSWORD_LEN) {
+    hint.textContent = `${MIN_PASSWORD_LEN - nw.length} more character${MIN_PASSWORD_LEN - nw.length === 1 ? '' : 's'} needed.`;
+    hint.style.color = 'var(--vc-orange)';
+  } else if (cf && nw !== cf) {
+    hint.textContent = "Confirmation doesn't match yet.";
+    hint.style.color = 'var(--vc-orange)';
+  } else if (cf && nw === cf) {
+    hint.textContent = 'Passwords match.';
+    hint.style.color = 'var(--vc-green)';
+  } else {
+    hint.textContent = 'Long enough — now confirm it below.';
+    hint.style.color = 'var(--ink-muted)';
+  }
+}
+
+async function changePassword() {
+  const current = document.getElementById('pw-current').value;
+  const next = document.getElementById('pw-new').value;
+  const confirmPw = document.getElementById('pw-confirm').value;
+
+  if (!current) { showPwError('Enter your current password.'); return; }
+  if (!next || !confirmPw) { showPwError('Enter and confirm your new password.'); return; }
+  if (next.length < MIN_PASSWORD_LEN) { showPwError(`New password must be at least ${MIN_PASSWORD_LEN} characters.`); return; }
+  if (next !== confirmPw) { showPwError("The new password and its confirmation don't match."); return; }
+  if (next === current) { showPwError('Your new password must be different from your current one.'); return; }
+
+  const btn = document.getElementById('pw-save-btn');
+  btn.disabled = true; btn.textContent = 'Updating…';
+  showPwError('');
+
+  try {
+    /* Verify identity by re-authenticating with the CURRENT password first.
+     * updateUser() alone would let anyone who walks up to an unlocked, already
+     * signed-in browser silently take over the account. */
+    const { data: userData } = await sb.auth.getUser();
+    const email = (userData && userData.user && userData.user.email) || (currentUser() && currentUser().username);
+    if (!email) { showPwError('Could not identify your account. Please sign out and back in.'); return; }
+
+    const { error: reauthError } = await sb.auth.signInWithPassword({ email, password: current });
+    if (reauthError) { showPwError('Your current password is incorrect.'); return; }
+
+    const { error: updateError } = await sb.auth.updateUser({ password: next });
+    if (updateError) { showPwError(updateError.message || 'Could not update your password.'); return; }
+
+    closePasswordModal();
+    toast('Password updated. Use your new password the next time you sign in.');
+  } catch (e) {
+    showPwError('Something went wrong updating your password. Please try again.');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Update password';
+  }
 }
 
 async function logout() {
