@@ -415,7 +415,20 @@
     overflow-x: auto;
     overflow-y: hidden;
     margin-bottom: 20px;
+    /* A too-wide row (e.g. Employees with 3 action buttons) scrolls within
+     * the panel rather than clipping — but overflow-x:auto alone relies on
+     * the OS's scrollbar, which on Mac/mobile is invisible until you touch
+     * it. That left buttons like "Terminate" sitting off-screen with zero
+     * visual hint they existed. Force a slim, always-visible, styled
+     * scrollbar instead so "there's more to the right" is obvious at a
+     * glance, not something you discover by accident. */
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) var(--paper);
   }
+  .panel::-webkit-scrollbar { height: 10px; }
+  .panel::-webkit-scrollbar-track { background: var(--paper); }
+  .panel::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 5px; border: 2px solid var(--paper); }
+  .panel::-webkit-scrollbar-thumb:hover { background: var(--ink-muted); }
   .panel-header {
     padding: 14px 20px;
     border-bottom: 1px solid var(--line);
@@ -4416,7 +4429,7 @@ function renderEmployeesTable() {
 
     return `<tr${terminated ? ' style="opacity:0.7;"' : ''}>
       <td><strong style="color:var(--ink)">${u.name}</strong></td>
-      <td class="mono">${u.username}</td>
+      <td class="mono" title="${u.username}">${(u.username || '').split('@')[0]}</td>
       <td>${statusCell}</td>
       <td>${leavesCell}</td>
       <td>${payCell(u)}</td>
