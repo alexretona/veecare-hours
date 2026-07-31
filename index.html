@@ -1618,6 +1618,28 @@
 </div>
 
 <!-- TERMINATE EMPLOYEE -->
+<!-- IN-APP CONFIRM
+     Replaces window.confirm() for critical actions. Browsers let a user tick
+     "prevent this page from creating more dialogs" after a few native popups;
+     from then on confirm() returns false instantly without showing anything,
+     which silently made Clock in / Clock out do nothing at all. An in-app
+     modal can't be suppressed that way. -->
+<div class="modal-backdrop" id="confirm-modal">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-header">
+      <div class="modal-title" id="confirm-title">Please confirm</div>
+      <button class="modal-close" onclick="resolveAppConfirm(false)">×</button>
+    </div>
+    <div class="modal-body">
+      <p id="confirm-message" style="font-size:13px; color:var(--ink-soft); margin:0; line-height:1.5;"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm" onclick="resolveAppConfirm(false)">Cancel</button>
+      <button class="btn btn-sm" id="confirm-ok-btn" onclick="resolveAppConfirm(true)">Confirm</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-backdrop" id="terminate-modal">
   <div class="modal">
     <div class="modal-header">
@@ -1858,11 +1880,26 @@
     </div>
     <div class="modal-body" style="background:var(--paper); max-height:72vh; overflow:auto;">
       <div id="invoice-print"></div>
+      <div id="inv-request-items-wrap" class="no-print" style="display:none; margin-top:12px; padding:12px 14px; background:var(--surface); border:1px solid var(--line); border-radius:6px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:8px; flex-wrap:wrap;">
+          <label style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-muted);">
+            Claim an allowance <span style="font-weight:400; text-transform:none; letter-spacing:normal;">(optional — e.g. ink, internet)</span>
+          </label>
+          <button class="btn btn-ghost btn-sm" onclick="addRequestLineItem()">+ Add allowance</button>
+        </div>
+        <div id="inv-request-items-list"></div>
+        <p id="inv-request-items-empty" style="font-size:11px; color:var(--ink-muted); margin:4px 0 0;">
+          None — add one if you're claiming an allowance for this period.
+        </p>
+        <p style="font-size:10px; color:var(--ink-muted); margin:8px 0 0;">
+          These are a <strong>request</strong>. Your admin reviews each one and may adjust or remove it before approving. The invoice above updates as you add them.
+        </p>
+      </div>
       <div id="inv-request-concern-wrap" class="no-print" style="display:none; margin-top:12px; padding:12px 14px; background:var(--surface); border:1px solid var(--line); border-radius:6px;">
         <label style="display:block; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; color:var(--ink-muted); margin-bottom:6px;">
           Something look off? <span style="font-weight:400; text-transform:none; letter-spacing:normal;">(optional — flag it for your admin to review)</span>
         </label>
-        <textarea id="inv-request-concern" rows="2" style="width:100%;" placeholder="e.g. My approved COA for Jul 10 doesn't seem to be reflected in the hours."></textarea>
+        <textarea id="inv-request-concern" rows="2" style="width:100%;" oninput="if (REQUEST_PREVIEW) REQUEST_PREVIEW.concern = this.value;" placeholder="e.g. My approved COA for Jul 10 doesn't seem to be reflected in the hours."></textarea>
         <p style="font-size:10px; color:var(--ink-muted); margin:6px 0 0;">
           If you flag a concern, the invoice will come back to you for confirmation after your admin reviews it — even if the figures stay the same.
         </p>
@@ -2623,6 +2660,36 @@ function computeInvoice(user, start, end) {
   };
 }
 
+/* ============== IN-APP CONFIRM ==============
+ * Promise-based replacement for window.confirm(). Native dialogs can be
+ * permanently suppressed by the browser once a user ticks "prevent this page
+ * from creating additional dialogs" — after which confirm() returns false
+ * with no prompt, silently turning Clock in / Clock out into no-ops. This
+ * can't be suppressed, and it matches the rest of the app's styling.
+ *
+ * Usage: if (!(await appConfirm('Clock in at 9:00 AM?'))) return; */
+let APP_CONFIRM_RESOLVE = null;
+function appConfirm(message, opts) {
+  const o = opts || {};
+  document.getElementById('confirm-title').textContent = o.title || 'Please confirm';
+  document.getElementById('confirm-message').textContent = message;
+  const okBtn = document.getElementById('confirm-ok-btn');
+  okBtn.textContent = o.okLabel || 'Confirm';
+  okBtn.className = o.danger ? 'btn btn-danger btn-sm' : 'btn btn-sm';
+  document.getElementById('confirm-modal').classList.add('active');
+  setTimeout(() => { try { okBtn.focus(); } catch (e) {} }, 50);
+  /* If something calls this while a prompt is already open, don't leave the
+   * earlier caller hanging forever — resolve it as cancelled first. */
+  if (APP_CONFIRM_RESOLVE) { const stale = APP_CONFIRM_RESOLVE; APP_CONFIRM_RESOLVE = null; stale(false); }
+  return new Promise(resolve => { APP_CONFIRM_RESOLVE = resolve; });
+}
+function resolveAppConfirm(value) {
+  document.getElementById('confirm-modal').classList.remove('active');
+  const resolve = APP_CONFIRM_RESOLVE;
+  APP_CONFIRM_RESOLVE = null;
+  if (resolve) resolve(value);
+}
+
 function toast(msg) {
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -3112,8 +3179,11 @@ async function clockIn() {
     return;
   }
 
-  /* Confirmation prompt — guards against accidental or double-click clock-ins. */
-  if (!confirm('Confirming clock in at ' + fmtTime(nowISO()) + '. Proceed?')) return;
+  /* Confirmation prompt — guards against accidental or double-click clock-ins.
+   * Uses the in-app modal, not window.confirm(): browsers can suppress native
+   * dialogs, and a suppressed confirm() returns false, which made this return
+   * early and silently do nothing. */
+  if (!(await appConfirm('Clock in at ' + fmtTime(nowISO()) + '?', { title: 'Confirm clock in', okLabel: 'Clock in' }))) return;
 
   const btn = document.getElementById('clock-in-btn');
   btn.disabled = true;
@@ -3376,7 +3446,7 @@ async function clockOut() {
   }
   /* Confirmation prompt — guards against accidental or double-click clock-outs
    * (e.g. double-tapping "End lunch break" then immediately clocking out). */
-  if (!confirm('Confirming clock out at ' + fmtTime(nowISO()) + '. Proceed?')) return;
+  if (!(await appConfirm('Clock out at ' + fmtTime(nowISO()) + '?', { title: 'Confirm clock out', okLabel: 'Clock out' }))) return;
 
   const btn = document.getElementById('clock-out-btn');
   btn.disabled = true;
@@ -5706,12 +5776,18 @@ function buildInvoiceFromBuilder() {
   const c = IB.computed;
   const overridden = Object.values(IB.dirty).some(Boolean);
 
-  /* Only carry through line items that actually have a label and a nonzero
-   * amount — an empty row the admin added but never filled in shouldn't
-   * print as a blank line on the invoice. */
+  /* Include every row that has a real amount. A blank label is NOT a reason
+   * to discard the row — that silently ate people's allowances (they typed
+   * an amount, left the label alone, and it vanished from the invoice with
+   * no explanation). Fall back to the line type as the label instead. */
+  const TYPE_LABELS = { allowance: 'Allowance', incentive: 'Incentive', deduction: 'Deduction' };
   const lineItems = IB.lineItems
-    .filter(li => (li.label || '').trim() && Number(li.amount) > 0)
-    .map(li => ({ type: li.type, label: li.label.trim(), amount: round2(Number(li.amount)) }));
+    .filter(li => Number(li.amount) > 0)
+    .map(li => ({
+      type: li.type,
+      label: (li.label || '').trim() || TYPE_LABELS[li.type] || 'Other',
+      amount: round2(Number(li.amount))
+    }));
   const lineNet = lineItemsNet(lineItems);
 
   if (IB.basis === 'monthly') {
@@ -5781,6 +5857,12 @@ function buildInvoiceFromBuilder() {
 
 function previewFromBuilder() {
   if (!IB) return;
+  /* A row with a label but no amount contributes nothing and would otherwise
+   * disappear without a word — say so rather than let it vanish. */
+  const incomplete = IB.lineItems.filter(li => (li.label || '').trim() && !(Number(li.amount) > 0));
+  if (incomplete.length) {
+    toast(`Skipped ${incomplete.length} line item${incomplete.length === 1 ? '' : 's'} with no amount — enter an amount to include ${incomplete.length === 1 ? 'it' : 'them'}.`);
+  }
   const inv = buildInvoiceFromBuilder();
   /* Hide the builder but PRESERVE REVISING_ID — saveInvoice() needs it to know
    * this is a revise-and-re-send rather than a brand-new invoice. Full reset
@@ -5995,22 +6077,30 @@ function openInvoicePreview(inv, existing, mode) {
   const saveBtn = document.getElementById('inv-save-btn');
   const requestBtn = document.getElementById('inv-request-btn');
   const concernWrap = document.getElementById('inv-request-concern-wrap');
+  const itemsWrap = document.getElementById('inv-request-items-wrap');
   if (isRequest) {
     PENDING_INVOICE = null;          /* not an admin save */
     saveBtn.style.display = 'none';
     requestBtn.style.display = '';
     concernWrap.style.display = '';
-    document.getElementById('inv-request-concern').value = '';
+    itemsWrap.style.display = '';
+    /* Restore rather than clear: this modal is re-rendered every time the
+     * employee adds or edits an allowance, and wiping their typed concern
+     * on each refresh would be maddening. */
+    document.getElementById('inv-request-concern').value = (REQUEST_PREVIEW && REQUEST_PREVIEW.concern) || '';
+    renderRequestLineItems();
   } else if (existing) {
     PENDING_INVOICE = null;
     saveBtn.style.display = 'none';
     requestBtn.style.display = 'none';
     concernWrap.style.display = 'none';
+    itemsWrap.style.display = 'none';
   } else {
     PENDING_INVOICE = { inv, invoiceNo, invoiceDate };
     saveBtn.style.display = '';
     requestBtn.style.display = 'none';
     concernWrap.style.display = 'none';
+    itemsWrap.style.display = 'none';
   }
 
   document.getElementById('invoice-modal').classList.add('active');
@@ -6027,6 +6117,17 @@ function closeInvoiceModal() {
 
 /* Persist the invoice. Hours/rate are SNAPSHOTTED, so a later rate change or a
  * retroactive COA never silently alters an invoice that was already sent. */
+/* Order-insensitive comparison of two line-item sets. Used to decide whether
+ * an approved request is byte-for-byte what the employee submitted. */
+function sameLineItems(a, b) {
+  if ((a || []).length !== (b || []).length) return false;
+  const norm = arr => (arr || [])
+    .map(li => `${li.type}|${(li.label || '').trim().toLowerCase()}|${round2(Number(li.amount) || 0)}`)
+    .sort();
+  const na = norm(a), nb = norm(b);
+  return na.every((v, i) => v === nb[i]);
+}
+
 async function saveInvoice() {
   if (!PENDING_INVOICE) return;
   const { inv, invoiceNo, invoiceDate } = PENDING_INVOICE;
@@ -6067,7 +6168,14 @@ async function saveInvoice() {
           (inv.payBasis || 'hourly') === (orig.payBasis || 'hourly') &&
           (round2(inv.monthlySalary || 0) === round2(orig.monthlySalary || 0)) &&
           inv.start === orig.periodStart && inv.end === orig.periodEnd &&
-          (inv.lineItems || []).length === 0;
+          /* Employees can now propose allowances with their request. If the
+           * admin approves EXACTLY what was submitted — including those —
+           * the employee has already seen and agreed to these figures, so it
+           * completes. Any edit, addition, or removal means they're looking
+           * at something new and must acknowledge it. */
+          sameLineItems(inv.lineItems || [], D.invoiceLineItems
+            .filter(li => li.invoiceId === REVISING_ID)
+            .map(li => ({ type: li.lineType, label: li.label, amount: li.amount })));
       }
       const nowIso = new Date().toISOString();
       const finalWorkflow = approvedUnchanged ? 'acknowledged' : 'sent';
@@ -6285,8 +6393,19 @@ function reviewRequestedInvoice(id) {
   /* If the employee flagged a concern with their request, put it front and
    * center while the admin reviews — this is exactly the moment it matters. */
   const noteEl = document.getElementById('ib-request-note');
+  const empName = D.users.find(u => u.id === i.userId)?.name || 'Employee';
+  const proposed = D.invoiceLineItems.filter(li => li.invoiceId === i.id);
+  const parts = [];
   if (i.requestNote) {
-    noteEl.innerHTML = `<strong>⚠ ${D.users.find(u=>u.id===i.userId)?.name || 'Employee'} flagged a concern with this request:</strong><br>&ldquo;${i.requestNote.replace(/</g,'&lt;')}&rdquo;`;
+    parts.push(`<strong>⚠ ${empName} flagged a concern with this request:</strong><br>&ldquo;${i.requestNote.replace(/</g, '&lt;')}&rdquo;`);
+  }
+  if (proposed.length) {
+    const list = proposed.map(li => `${li.label} — ${currency(li.amount)}`).join('; ');
+    parts.push(`<strong>${empName} requested ${proposed.length} allowance${proposed.length === 1 ? '' : 's'}:</strong> ${list}.<br>
+      <span style="font-size:11px; color:var(--ink-soft);">Already loaded below — adjust or remove before approving if needed.</span>`);
+  }
+  if (parts.length) {
+    noteEl.innerHTML = parts.join('<hr style="border:none; border-top:1px solid var(--line); margin:8px 0;">');
     noteEl.style.display = '';
   } else {
     noteEl.style.display = 'none';
@@ -6480,7 +6599,69 @@ function requestInvoice() {
     overridden: false
   };
 
-  REQUEST_PREVIEW = { inv, cyc };
+  REQUEST_PREVIEW = { base: inv, cyc, items: [], concern: '' };
+  refreshRequestPreview();
+}
+
+/* ---- Employee-proposed allowances on a request ----
+ * Kept separate from the admin's IB.lineItems: this is a *proposal* attached
+ * to a request, restricted to allowances (incentives/deductions are the
+ * admin's call, not something a contractor adds to their own invoice). */
+function renderRequestLineItems() {
+  const list = document.getElementById('inv-request-items-list');
+  const empty = document.getElementById('inv-request-items-empty');
+  if (!list || !REQUEST_PREVIEW) return;
+  const items = REQUEST_PREVIEW.items;
+  if (items.length === 0) {
+    list.innerHTML = '';
+    empty.style.display = '';
+    return;
+  }
+  empty.style.display = 'none';
+  /* onchange (not oninput) so the preview only re-renders once the field is
+   * left — re-rendering mid-keystroke would steal focus on every character. */
+  list.innerHTML = items.map((li, idx) => `
+    <div class="li-row">
+      <span style="font-size:11px; font-weight:600; color:var(--vc-green);">Allowance (+)</span>
+      <input type="text" placeholder="e.g. Ink allowance" value="${(li.label || '').replace(/"/g, '&quot;')}"
+        onchange="updateRequestLineItem(${idx}, 'label', this.value)">
+      <input type="number" step="0.01" min="0" placeholder="0.00" value="${li.amount || ''}"
+        onchange="updateRequestLineItem(${idx}, 'amount', this.value)">
+      <button class="btn btn-ghost btn-sm li-remove" onclick="removeRequestLineItem(${idx})">Remove</button>
+    </div>`).join('');
+}
+
+function addRequestLineItem() {
+  if (!REQUEST_PREVIEW) return;
+  REQUEST_PREVIEW.items.push({ type: 'allowance', label: '', amount: 0 });
+  refreshRequestPreview();
+}
+function removeRequestLineItem(idx) {
+  if (!REQUEST_PREVIEW) return;
+  REQUEST_PREVIEW.items.splice(idx, 1);
+  refreshRequestPreview();
+}
+function updateRequestLineItem(idx, field, value) {
+  if (!REQUEST_PREVIEW || !REQUEST_PREVIEW.items[idx]) return;
+  REQUEST_PREVIEW.items[idx][field] = (field === 'amount') ? (parseFloat(value) || 0) : value;
+  refreshRequestPreview();
+}
+
+/* Re-renders the whole preview so the printed invoice above reflects the
+ * allowances as they're added — the employee sees the real total they're
+ * submitting, not a stale one. */
+function refreshRequestPreview() {
+  if (!REQUEST_PREVIEW) return;
+  const base = REQUEST_PREVIEW.base;
+  const lineItems = REQUEST_PREVIEW.items
+    .filter(li => Number(li.amount) > 0)
+    .map(li => ({ type: 'allowance', label: (li.label || '').trim() || 'Allowance', amount: round2(Number(li.amount)) }));
+
+  const inv = Object.assign({}, base, {
+    lineItems,
+    total: round2(base.total + lineItemsNet(lineItems))
+  });
+  REQUEST_PREVIEW.inv = inv;
   openInvoicePreview(inv, null, 'request');
 }
 
@@ -6531,10 +6712,21 @@ async function submitInvoiceRequest() {
   if (error) { toast('Could not submit request: ' + error.message); return; }
 
   D.invoices.push(invoiceFromRow(data));
+
+  /* Save the employee's proposed allowances alongside the request so the
+   * admin sees them pre-loaded in the builder during review. */
+  const proposed = (inv.lineItems || []);
+  if (proposed.length) {
+    const liError = await replaceInvoiceLineItems(data.id, proposed);
+    if (liError) toast('Request submitted, but the allowances failed to save: ' + liError);
+  }
+
   closeInvoiceModal();
   toast(concern
     ? 'Invoice request submitted with your concern — your admin will review it.'
-    : 'Invoice request submitted — your admin will review it.');
+    : (proposed.length
+        ? `Invoice request submitted with ${proposed.length} allowance${proposed.length === 1 ? '' : 's'} — your admin will review it.`
+        : 'Invoice request submitted — your admin will review it.'));
   renderEmpInvoices();
 }
 
