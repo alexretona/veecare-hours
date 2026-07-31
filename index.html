@@ -166,6 +166,9 @@
     font-weight: 500;
     cursor: pointer;
     transition: all 0.15s;
+    /* Button labels never break mid-phrase ("Mark holiday" -> two lines),
+       which is what made table rows look ragged. */
+    white-space: nowrap;
   }
   .btn:hover { background: var(--vc-green-dark); border-color: var(--vc-green-dark); box-shadow: 0 2px 8px rgba(46,184,76,0.2); }
   .btn-full { width: 100%; padding: 13px; font-size: 14px; font-weight: 600; letter-spacing: 0.02em; }
@@ -667,7 +670,19 @@
   }
 
   .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  .actions-cell { display: flex; gap: 6px; flex-wrap: wrap; }
+  /* Row action buttons: one horizontal strip, never wrapped onto a second
+     line — wrapping left rows at uneven heights and looked cluttered. If the
+     buttons are wider than the space available, the surrounding .panel
+     scrolls horizontally (it already has overflow-x: auto) so nothing is
+     clipped or hidden. */
+  .actions-cell { display: flex; gap: 6px; flex-wrap: nowrap; align-items: center; }
+  .actions-cell > * { flex-shrink: 0; white-space: nowrap; }
+  /* Narrower screens: tighten the buttons so more of them fit on one line
+     before the panel needs to scroll at all. */
+  @media (max-width: 1200px) {
+    .actions-cell { gap: 4px; }
+    .actions-cell .btn-sm { padding: 5px 9px; font-size: 11px; }
+  }
   .toolbar {
     display: flex;
     gap: 12px;
