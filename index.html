@@ -1854,7 +1854,7 @@
           <tbody>
             <tr>
               <td class="lab">Regular</td>
-              <td rowspan="3" style="vertical-align:middle;">
+              <td rowspan="4" style="vertical-align:middle;">
                 <input type="number" id="ib-rate" step="0.01" min="0" oninput="onIbFieldChange('ib-rate')">
               </td>
               <td><input type="number" id="ib-regular" step="0.25" min="0" oninput="onIbFieldChange('ib-regular')"></td>
@@ -1869,6 +1869,11 @@
               <td class="lab">Holiday</td>
               <td><input type="number" id="ib-holiday" step="0.25" min="0" oninput="onIbFieldChange('ib-holiday')"></td>
               <td class="ib-amt" id="ib-holiday-amt">—</td>
+            </tr>
+            <tr>
+              <td class="lab">Leave <small style="font-weight:400; color:var(--ink-muted); display:block;">VL/SL</small></td>
+              <td><input type="number" id="ib-leave" step="0.25" min="0" oninput="onIbFieldChange('ib-leave')" title="Auto-filled from approved VL/SL for this period — adjust if needed"></td>
+              <td class="ib-amt" id="ib-leave-amt">—</td>
             </tr>
             <tr class="ib-total-row">
               <td class="lab">Total</td>
@@ -1895,8 +1900,15 @@
             <tr>
               <td class="lab">Holiday <small style="font-weight:400; color:var(--ink-muted); display:block;">hrs × rate</small></td>
               <td style="width:90px;"><input type="number" id="ib-holiday-m" step="0.25" min="0" oninput="onIbFieldChange('ib-holiday-m')" title="Holiday hours"></td>
-              <td style="width:110px;"><input type="number" id="ib-hol-rate-m" step="0.01" min="0" oninput="onIbFieldChange('ib-hol-rate-m')" title="Hourly rate for holiday pay"></td>
+              <td rowspan="2" style="width:110px; vertical-align:middle;">
+                <input type="number" id="ib-hol-rate-m" step="0.01" min="0" oninput="onIbFieldChange('ib-hol-rate-m')" title="Rate for both Holiday and Leave pay">
+              </td>
               <td class="ib-amt" id="ib-holiday-m-amt">—</td>
+            </tr>
+            <tr>
+              <td class="lab">Leave <small style="font-weight:400; color:var(--ink-muted); display:block;">VL/SL</small></td>
+              <td style="width:90px;"><input type="number" id="ib-leave-m" step="0.25" min="0" oninput="onIbFieldChange('ib-leave-m')" title="Auto-filled from approved VL/SL for this period — adjust if needed"></td>
+              <td class="ib-amt" id="ib-leave-m-amt">—</td>
             </tr>
             <tr class="ib-total-row">
               <td class="lab">Total</td>
@@ -2069,6 +2081,7 @@ function invoiceFromRow(r) {
     regularHours: Number(r.regular_hours) || 0,
     overtimeHours: Number(r.overtime_hours) || 0,
     holidayHours: Number(r.holiday_hours) || 0,
+    leaveHours: Number(r.leave_hours) || 0,
     excessHours: Number(r.excess_hours) || 0,
     capHours: (r.cap_hours === null || r.cap_hours === undefined) ? null : Number(r.cap_hours),
     totalAmount: Number(r.total_amount) || 0,
@@ -2676,6 +2689,12 @@ function cycleLabel(cycle) {
  * on top of the cap, because a declared holiday isn't the contractor working
  * unapproved overtime.
  */
+/* Standard paid hours for a full-day leave, matching the same default used
+ * for a full-day holiday (see hol-hours default of 8 in openHolidayModal) —
+ * this codebase's one existing convention for "how long is a work day"
+ * when there's no clocked time to measure it from. */
+const STANDARD_DAY_HOURS = 8;
+
 function computeInvoice(user, start, end) {
   const entries = D.entries.filter(e =>
     e.userId === user.id && e.status === 'completed' &&
@@ -2684,15 +2703,33 @@ function computeInvoice(user, start, end) {
   const worked = entries.reduce((s, e) => s + workedHours(e), 0);
   const workedDates = new Set(entries.map(e => e.date));
 
-  /* Paid holidays inside the window that the employee did not actually work. */
+  /* Paid holidays AND approved VL/SL leave inside the window that the
+   * employee did not actually work — both are paid time off, so both should
+   * add billable hours to the invoice, not just reduce it to zero for that
+   * day. One pass over the date range applies the same precedence used
+   * everywhere else in the app (see getHolidayOn's doc comment):
+   *     worked  >  approved leave  >  holiday  >  (unpaid absence)
+   * A day already covered by an actual time entry is never double-credited
+   * with leave or holiday hours on top of it. */
   let holidayHours = 0;
   const holidayDates = [];
+  let leaveHours = 0;
+  const leaveDates = [];
   let d = start, guard = 0;
   while (d <= end && guard < 400) {
-    const h = getHolidayOn(user.id, d);
-    if (h && h.paid && !workedDates.has(d)) {
-      holidayHours += h.hours;
-      holidayDates.push({ date: d, name: h.name, hours: h.hours });
+    if (!workedDates.has(d)) {
+      const leave = getApprovedLeaveOn(user.id, d);
+      if (leave) {
+        const hrs = (leave.durationType === 'partial' && leave.hours != null) ? leave.hours : STANDARD_DAY_HOURS;
+        leaveHours += hrs;
+        leaveDates.push({ date: d, type: leave.type, hours: hrs });
+      } else {
+        const h = getHolidayOn(user.id, d);
+        if (h && h.paid) {
+          holidayHours += h.hours;
+          holidayDates.push({ date: d, name: h.name, hours: h.hours });
+        }
+      }
     }
     d = addDays(d, 1); guard++;
   }
@@ -2706,6 +2743,7 @@ function computeInvoice(user, start, end) {
   const rate = Number(user.rate) || 0;
   const regularAmt = billable * rate;
   const holidayAmt = holidayHours * rate;
+  const leaveAmt = leaveHours * rate;
 
   return {
     user,
@@ -2717,11 +2755,14 @@ function computeInvoice(user, start, end) {
     overtimeHours: 0,               /* approved OT is not modelled yet; always 0 */
     holidayHours: round2(holidayHours),
     holidayDates,
+    leaveHours: round2(leaveHours),
+    leaveDates,
     cap,
     rate,
     regularAmount: round2(regularAmt),
     holidayAmount: round2(holidayAmt),
-    total: round2(regularAmt + holidayAmt),
+    leaveAmount: round2(leaveAmt),
+    total: round2(regularAmt + holidayAmt + leaveAmt),
     daysWorked: workedDates.size
   };
 }
@@ -5829,12 +5870,16 @@ function recomputeBuilder(reseed) {
      * previous override is gone and the "edited" highlight must go with it. */
     IB.dirty = {};
 
-    /* Hourly block */
+    /* Hourly block. Leave hours are seeded from the employee's actual
+     * approved VL/SL for this period — same treatment as Holiday: pre-filled
+     * with the real number, but still admin-editable for the rare correction.
+     * Rate is NOT seeded separately here; it shares ib-rate via rowspan. */
     const seedHourly = {
       'ib-rate': computed.rate,
       'ib-regular': computed.regularHours,
       'ib-overtime': computed.overtimeHours,
-      'ib-holiday': computed.holidayHours
+      'ib-holiday': computed.holidayHours,
+      'ib-leave': computed.leaveHours
     };
     for (const id in seedHourly) {
       const el = document.getElementById(id);
@@ -5845,15 +5890,17 @@ function recomputeBuilder(reseed) {
     /* Monthly block. Salary defaults from the employee's stored monthly
      * salary; if they don't have one on file (e.g. normally hourly, admin is
      * overriding just this invoice), fall back to the computed hourly total
-     * as a reasonable starting point. Holiday keeps its own small rate,
-     * defaulting to the employee's effective hourly rate. */
+     * as a reasonable starting point. Holiday's rate field is shared with
+     * Leave via rowspan, so only one rate needs seeding. Leave hours are
+     * seeded from actual approved VL/SL, same treatment as Holiday hours. */
     const salaryDefault = (u.payBasis === 'monthly' && u.monthlySalary)
       ? u.monthlySalary
       : round2(computed.regularAmount);
     const seedMonthly = {
       'ib-monthly-salary': salaryDefault,
       'ib-holiday-m': computed.holidayHours,
-      'ib-hol-rate-m': computed.rate
+      'ib-hol-rate-m': computed.rate,
+      'ib-leave-m': computed.leaveHours
     };
     for (const id in seedMonthly) {
       const el = document.getElementById(id);
@@ -5886,9 +5933,11 @@ function onIbFieldChange(field) {
     'ib-regular': c.regularHours,
     'ib-overtime': c.overtimeHours,
     'ib-holiday': c.holidayHours,
+    'ib-leave': c.leaveHours,
     'ib-monthly-salary': salaryDefault,
     'ib-holiday-m': c.holidayHours,
-    'ib-hol-rate-m': c.rate
+    'ib-hol-rate-m': c.rate,
+    'ib-leave-m': c.leaveHours
   };
   const el = document.getElementById(field);
   const edited = round2(ibNum(field)) !== round2(map[field]);
@@ -5910,27 +5959,39 @@ function refreshBuilderTotals() {
     const holHrs = ibNum('ib-holiday-m');
     const holRate = ibNum('ib-hol-rate-m');
     const holAmt = round2(holHrs * holRate);
-    total = round2(salary + holAmt + lineNet);
+    /* Leave hours come from its own input (auto-filled, admin-editable);
+     * the rate is the SAME shared field as Holiday's (merged via rowspan in
+     * the markup), not a separate value. */
+    const lvHrs = ibNum('ib-leave-m');
+    const lvAmt = round2(lvHrs * holRate);
+    total = round2(salary + holAmt + lvAmt + lineNet);
 
     document.getElementById('ib-monthly-salary-amt').textContent = currency(salary);
     document.getElementById('ib-holiday-m-amt').textContent = currency(holAmt);
+    document.getElementById('ib-leave-m-amt').textContent = currency(lvAmt);
     document.getElementById('ib-total-amt-monthly').textContent = currency(total);
   } else {
     const rate = ibNum('ib-rate');
     const reg = ibNum('ib-regular');
     const ot = ibNum('ib-overtime');
     const hol = ibNum('ib-holiday');
+    /* Leave hours come from its own input (auto-filled, admin-editable);
+     * the rate is the SAME shared ib-rate field (merged via rowspan in the
+     * markup), not a separate value. */
+    const lv = ibNum('ib-leave');
+    const lvAmt = round2(lv * rate);
 
     const regAmt = round2(reg * rate);
     const otAmt = round2(ot * rate);
     const holAmt = round2(hol * rate);
-    total = round2(regAmt + otAmt + holAmt + lineNet);
+    total = round2(regAmt + otAmt + holAmt + lvAmt + lineNet);
 
     document.getElementById('ib-regular-amt').textContent = currency(regAmt);
     document.getElementById('ib-overtime-amt').textContent = currency(otAmt);
     document.getElementById('ib-holiday-amt').textContent = currency(holAmt);
+    document.getElementById('ib-leave-amt').textContent = currency(lvAmt);
     document.getElementById('ib-total-amt-hourly').textContent = currency(total);
-    document.getElementById('ib-total-hours-hourly').textContent = round2(reg + ot + hol);
+    document.getElementById('ib-total-hours-hourly').textContent = round2(reg + ot + hol + lv);
   }
 
   /* Context strip: what the raw data actually says, so an override is always
@@ -5943,6 +6004,7 @@ function refreshBuilderTotals() {
     if (c.excessHours > 0) bits.push(`<span style="color:var(--vc-red);">Excess: <strong>${c.excessHours}</strong> hrs (unbilled)</span>`);
   }
   if (c.holidayHours > 0) bits.push(`<span style="color:#8A6100;">Holiday: <strong>${c.holidayHours}</strong> hrs</span>`);
+  if (c.leaveHours > 0) bits.push(`<span style="color:#1E5BA8;">Leave (VL/SL): <strong>${c.leaveHours}</strong> hrs</span>`);
   document.getElementById('ib-context').innerHTML = bits.join(' &nbsp;·&nbsp; ');
 
   const anyDirty = Object.values(IB.dirty).some(Boolean);
@@ -5974,6 +6036,10 @@ function buildInvoiceFromBuilder() {
     const holiday = ibNum('ib-holiday-m');
     const holRate = ibNum('ib-hol-rate-m');
     const holAmt = round2(holiday * holRate);
+    /* Leave hours come from the input (admin-editable, auto-filled); rate is
+     * the same shared field as Holiday's. */
+    const leave = ibNum('ib-leave-m');
+    const leaveAmt = round2(leave * holRate);
 
     return {
       user: u,
@@ -5986,14 +6052,17 @@ function buildInvoiceFromBuilder() {
       regularHours: 0,
       overtimeHours: 0,
       holidayHours: round2(holiday),
+      leaveHours: round2(leave),
       excessHours: 0,               /* fixed salary has no billing cap to exceed */
       holidayDates: c.holidayDates,
+      leaveDates: c.leaveDates,
       cap: null,
       rate: holRate,                /* kept for the Holiday line's hrs × rate */
       regularAmount: salary,
       holidayAmount: holAmt,
+      leaveAmount: leaveAmt,
       lineItems,
-      total: round2(salary + holAmt + lineNet),
+      total: round2(salary + holAmt + leaveAmt + lineNet),
       daysWorked: c.daysWorked,
       overridden
     };
@@ -6003,9 +6072,13 @@ function buildInvoiceFromBuilder() {
   const regular = ibNum('ib-regular');
   const overtime = ibNum('ib-overtime');
   const holiday = ibNum('ib-holiday');
+  /* Leave hours come from the input (admin-editable, auto-filled); rate is
+   * the same shared ib-rate field used by Regular/Overtime/Holiday. */
+  const leave = ibNum('ib-leave');
   const regAmt = round2(regular * rate);
   const holAmt = round2(holiday * rate);
   const otAmt = round2(overtime * rate);
+  const leaveAmt = round2(leave * rate);
 
   return {
     user: u,
@@ -6018,17 +6091,20 @@ function buildInvoiceFromBuilder() {
     regularHours: round2(regular),
     overtimeHours: round2(overtime),
     holidayHours: round2(holiday),
+    leaveHours: round2(leave),
     /* If the admin manually raised the billed hours, the "excess" framing no
      * longer applies to whatever they chose to bill — so only carry the excess
      * through when the regular-hours figure was left untouched. */
     excessHours: IB.dirty['ib-regular'] ? 0 : c.excessHours,
     holidayDates: c.holidayDates,
+    leaveDates: c.leaveDates,
     cap: c.cap,
     rate,
     regularAmount: regAmt,
     holidayAmount: holAmt,
+    leaveAmount: leaveAmt,
     lineItems,
-    total: round2(regAmt + otAmt + holAmt + lineNet),
+    total: round2(regAmt + otAmt + holAmt + leaveAmt + lineNet),
     daysWorked: c.daysWorked,
     overridden
   };
@@ -6084,6 +6160,7 @@ function openInvoicePreview(inv, existing, mode) {
   const regular  = existing ? existing.regularHours  : inv.regularHours;
   const overtime = existing ? existing.overtimeHours : inv.overtimeHours;
   const holiday  = existing ? existing.holidayHours  : inv.holidayHours;
+  const leave    = existing ? existing.leaveHours    : (inv.leaveHours || 0);
   const excess   = existing ? existing.excessHours   : inv.excessHours;
   const rate     = existing ? existing.rate          : inv.rate;
   const total    = existing ? existing.totalAmount   : inv.total;
@@ -6097,7 +6174,8 @@ function openInvoicePreview(inv, existing, mode) {
   const regAmt = round2(regular * rate);
   const otAmt  = round2(overtime * rate);
   const holAmt = round2(holiday * rate);
-  const billedHours = round2(regular + overtime + holiday);
+  const leaveAmt = round2(leave * rate);
+  const billedHours = round2(regular + overtime + holiday + leave);
   const isMonthly = payBasis === 'monthly';
 
   const logo = document.querySelector('.topbar-logo')?.src || '';
@@ -6116,6 +6194,9 @@ function openInvoicePreview(inv, existing, mode) {
 
   const holidayNote = inv.holidayDates && inv.holidayDates.length
     ? `<div class="inv-note">Holiday hours cover: ${inv.holidayDates.map(h => `${fmtDate(h.date)} — ${h.name} (${round2(h.hours)} hrs)`).join('; ')}.</div>`
+    : '';
+  const leaveNote = inv.leaveDates && inv.leaveDates.length
+    ? `<div class="inv-note">Leave hours cover: ${inv.leaveDates.map(l => `${fmtDate(l.date)} — ${l.type} (${round2(l.hours)} hrs)`).join('; ')}.</div>`
     : '';
   const capNote = (!isMonthly && inv.cap !== null && excess > 0)
     ? `<div class="inv-note">Billable hours are capped at ${round2(inv.cap)} for this cutoff. ${excess} hour${excess === 1 ? '' : 's'} worked beyond the cap ${excess === 1 ? 'was' : 'were'} not approved by the client and ${excess === 1 ? 'is' : 'are'} therefore unpaid.</div>`
@@ -6139,6 +6220,13 @@ function openInvoicePreview(inv, existing, mode) {
             <td class="mono">${currency(holAmt)}</td>
             <td></td>
           </tr>` : ''}
+          ${leave > 0 ? `<tr>
+            <td class="lab">LEAVE HOURS (VL/SL)</td>
+            <td class="mono">${currency(rate)}</td>
+            <td class="mono">${leave}</td>
+            <td class="mono">${currency(leaveAmt)}</td>
+            <td></td>
+          </tr>` : ''}
   ` : `
           <tr>
             <td class="lab">REGULAR HOURS</td>
@@ -6159,6 +6247,13 @@ function openInvoicePreview(inv, existing, mode) {
             <td class="mono">${currency(rate)}</td>
             <td class="mono">${holiday}</td>
             <td class="mono">${currency(holAmt)}</td>
+            <td></td>
+          </tr>
+          <tr>
+            <td class="lab">LEAVE HOURS (VL/SL)</td>
+            <td class="mono">${currency(rate)}</td>
+            <td class="mono">${leave}</td>
+            <td class="mono">${currency(leaveAmt)}</td>
             <td></td>
           </tr>
           ${excessRow}
@@ -6243,6 +6338,7 @@ function openInvoicePreview(inv, existing, mode) {
       </div>
       ${capNote}
       ${holidayNote}
+      ${leaveNote}
     </div>`;
 
   /* Footer note + Save button state */
@@ -6343,6 +6439,7 @@ async function saveInvoice() {
           round2(inv.regularHours) === round2(orig.regularHours) &&
           round2(inv.overtimeHours) === round2(orig.overtimeHours) &&
           round2(inv.holidayHours) === round2(orig.holidayHours) &&
+          round2(inv.leaveHours || 0) === round2(orig.leaveHours || 0) &&
           round2(inv.total) === round2(orig.totalAmount) &&
           (inv.payBasis || 'hourly') === (orig.payBasis || 'hourly') &&
           (round2(inv.monthlySalary || 0) === round2(orig.monthlySalary || 0)) &&
@@ -6365,6 +6462,7 @@ async function saveInvoice() {
         regular_hours: inv.regularHours,
         overtime_hours: inv.overtimeHours,
         holiday_hours: inv.holidayHours,
+        leave_hours: inv.leaveHours || 0,
         excess_hours: inv.excessHours,
         cap_hours: inv.cap,
         pay_basis: inv.payBasis || 'hourly',
@@ -6389,7 +6487,7 @@ async function saveInvoice() {
       Object.assign(orig, {
         invoiceNo: finalInvoiceNo,
         rate: inv.rate, regularHours: inv.regularHours, overtimeHours: inv.overtimeHours,
-        holidayHours: inv.holidayHours, excessHours: inv.excessHours, capHours: inv.cap,
+        holidayHours: inv.holidayHours, leaveHours: inv.leaveHours || 0, excessHours: inv.excessHours, capHours: inv.cap,
         payBasis: patch.pay_basis, monthlySalary: patch.monthly_salary,
         totalAmount: inv.total, revision: patch.revision, workflow: finalWorkflow,
         sentAt: patch.sent_at, disputedAt: null, disputeReason: null,
@@ -6424,6 +6522,7 @@ async function saveInvoice() {
     regular_hours: inv.regularHours,
     overtime_hours: inv.overtimeHours,
     holiday_hours: inv.holidayHours,
+    leave_hours: inv.leaveHours || 0,
     excess_hours: inv.excessHours,
     cap_hours: inv.cap,
     pay_basis: inv.payBasis || 'hourly',
@@ -6480,7 +6579,7 @@ function renderInvoiceHistory() {
   }
   tbody.innerHTML = rows.map(i => {
     const u = D.users.find(x => x.id === i.userId);
-    const hrs = round2(i.regularHours + i.overtimeHours + i.holidayHours);
+    const hrs = round2(i.regularHours + i.overtimeHours + i.holidayHours + (i.leaveHours || 0));
     const excessTag = i.excessHours > 0
       ? ` <span class="badge capped" style="font-size:9px;">${round2(i.excessHours)} unbilled</span>` : '';
     const editTag = i.notes
@@ -6766,14 +6865,17 @@ function requestInvoice() {
     regularHours: isMonthly ? 0 : c.regularHours,
     overtimeHours: 0,
     holidayHours: c.holidayHours,
+    leaveHours: c.leaveHours,
     excessHours: isMonthly ? 0 : c.excessHours,
     holidayDates: c.holidayDates,
+    leaveDates: c.leaveDates,
     cap: isMonthly ? null : c.cap,
     rate: c.rate,
     regularAmount: isMonthly ? u.monthlySalary : c.regularAmount,
     holidayAmount: c.holidayAmount,
+    leaveAmount: c.leaveAmount,
     lineItems: [],
-    total: isMonthly ? round2(u.monthlySalary + c.holidayAmount) : c.total,
+    total: isMonthly ? round2(u.monthlySalary + c.holidayAmount + c.leaveAmount) : c.total,
     daysWorked: c.daysWorked,
     overridden: false
   };
@@ -6874,6 +6976,7 @@ async function submitInvoiceRequest() {
     regular_hours: inv.regularHours,
     overtime_hours: inv.overtimeHours,
     holiday_hours: inv.holidayHours,
+    leave_hours: inv.leaveHours || 0,
     excess_hours: inv.excessHours,
     cap_hours: inv.cap,
     pay_basis: inv.payBasis,
@@ -6926,7 +7029,7 @@ function renderEmpInvoices() {
   }
 
   tbody.innerHTML = rows.map(i => {
-    const hrs = round2(i.regularHours + i.overtimeHours + i.holidayHours);
+    const hrs = round2(i.regularHours + i.overtimeHours + i.holidayHours + (i.leaveHours || 0));
     const revTag = i.revision > 1 ? ` <span class="badge edited" style="font-size:9px;">rev ${i.revision}</span>` : '';
 
     let actions = '';
