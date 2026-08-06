@@ -1854,7 +1854,7 @@
           <tbody>
             <tr>
               <td class="lab">Regular</td>
-              <td rowspan="4" style="vertical-align:middle;">
+              <td rowspan="3" style="vertical-align:middle;">
                 <input type="number" id="ib-rate" step="0.01" min="0" oninput="onIbFieldChange('ib-rate')">
               </td>
               <td><input type="number" id="ib-regular" step="0.25" min="0" oninput="onIbFieldChange('ib-regular')"></td>
@@ -1866,14 +1866,15 @@
               <td class="ib-amt" id="ib-overtime-amt">—</td>
             </tr>
             <tr>
-              <td class="lab">Holiday</td>
-              <td><input type="number" id="ib-holiday" step="0.25" min="0" oninput="onIbFieldChange('ib-holiday')"></td>
-              <td class="ib-amt" id="ib-holiday-amt">—</td>
-            </tr>
-            <tr>
               <td class="lab">Leave <small style="font-weight:400; color:var(--ink-muted); display:block;">VL/SL</small></td>
               <td><input type="number" id="ib-leave" step="0.25" min="0" oninput="onIbFieldChange('ib-leave')" title="Auto-filled from approved VL/SL for this period — adjust if needed"></td>
               <td class="ib-amt" id="ib-leave-amt">—</td>
+            </tr>
+            <tr>
+              <td class="lab">Holiday <small style="font-weight:400; color:var(--ink-muted); display:block;">rate varies — set below</small></td>
+              <td><input type="number" id="ib-hol-rate" step="0.01" min="0" oninput="onIbFieldChange('ib-hol-rate')" title="Holiday pay often differs from the regular rate — double pay, 1.5×, +30%, etc. Set the exact rate that applies here."></td>
+              <td><input type="number" id="ib-holiday" step="0.25" min="0" oninput="onIbFieldChange('ib-holiday')"></td>
+              <td class="ib-amt" id="ib-holiday-amt">—</td>
             </tr>
             <tr class="ib-total-row">
               <td class="lab">Total</td>
@@ -1884,7 +1885,7 @@
           </tbody>
         </table>
         <p style="font-size:10.5px; color:var(--ink-muted); margin-top:6px;">
-          Amounts are always calculated (hours × rate) — they can't be typed directly.
+          Holiday pay is often a different rate than regular pay (double pay, 1.5×, +30%, etc.) — check it's set correctly before sending. Amounts are always calculated (hours × rate) — they can't be typed directly.
         </p>
       </div>
 
@@ -1898,16 +1899,15 @@
               <td class="ib-amt" id="ib-monthly-salary-amt">—</td>
             </tr>
             <tr>
-              <td class="lab">Holiday <small style="font-weight:400; color:var(--ink-muted); display:block;">hrs × rate</small></td>
+              <td class="lab">Holiday <small style="font-weight:400; color:var(--ink-muted); display:block;">rate varies — hrs × rate</small></td>
               <td style="width:90px;"><input type="number" id="ib-holiday-m" step="0.25" min="0" oninput="onIbFieldChange('ib-holiday-m')" title="Holiday hours"></td>
-              <td rowspan="2" style="width:110px; vertical-align:middle;">
-                <input type="number" id="ib-hol-rate-m" step="0.01" min="0" oninput="onIbFieldChange('ib-hol-rate-m')" title="Rate for both Holiday and Leave pay">
-              </td>
+              <td style="width:110px;"><input type="number" id="ib-hol-rate-m" step="0.01" min="0" oninput="onIbFieldChange('ib-hol-rate-m')" title="Holiday pay often differs from the regular rate — double pay, 1.5×, +30%, etc."></td>
               <td class="ib-amt" id="ib-holiday-m-amt">—</td>
             </tr>
             <tr>
-              <td class="lab">Leave <small style="font-weight:400; color:var(--ink-muted); display:block;">VL/SL</small></td>
+              <td class="lab">Leave <small style="font-weight:400; color:var(--ink-muted); display:block;">VL/SL hrs × rate</small></td>
               <td style="width:90px;"><input type="number" id="ib-leave-m" step="0.25" min="0" oninput="onIbFieldChange('ib-leave-m')" title="Auto-filled from approved VL/SL for this period — adjust if needed"></td>
+              <td style="width:110px;"><input type="number" id="ib-leave-rate-m" step="0.01" min="0" oninput="onIbFieldChange('ib-leave-rate-m')" title="Regular rate — not the holiday premium"></td>
               <td class="ib-amt" id="ib-leave-m-amt">—</td>
             </tr>
             <tr class="ib-total-row">
@@ -1918,7 +1918,7 @@
           </tbody>
         </table>
         <p style="font-size:10.5px; color:var(--ink-muted); margin-top:6px;">
-          The salary is a fixed amount — it doesn't multiply by hours worked. Holiday pay (if any) is added on top, hours × rate.
+          The salary is a fixed amount — it doesn't multiply by hours worked. Holiday pay often differs from the regular rate (double pay, 1.5×, +30%, etc.) — check it's set correctly before sending.
         </p>
       </div>
 
@@ -1950,6 +1950,112 @@
 </div>
 
 <!-- INVOICE PREVIEW -->
+<!-- EMPLOYEE: REVIEW/EDIT HOURS BEFORE REQUESTING
+     Pulls hours from actual time entries + approved leave, but lets the
+     employee adjust before it ever reaches the admin — the admin's job on
+     their side becomes a final check of what's already been prepared,
+     rather than the primary place numbers get entered. Rate is never
+     editable here; only the admin controls pay rate. -->
+<div class="modal-backdrop" id="emp-hours-modal">
+  <div class="modal" style="max-width:620px; width:96%;">
+    <div class="modal-header">
+      <div class="modal-title">Review your hours</div>
+      <button class="modal-close" onclick="closeEmpHoursModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12px; color:var(--ink-soft); margin:0 0 12px;">
+        Pulled from your time entries and approved leave for <strong id="eh-period" style="color:var(--ink);"></strong>.
+        Adjust anything that doesn't look right — your admin does a final check before approving.
+      </p>
+      <div id="eh-context" style="padding:9px 12px; background:var(--paper); border:1px solid var(--line); border-radius:4px; font-size:11px; color:var(--ink-soft); margin-bottom:16px;"></div>
+
+      <div id="eh-hourly-block">
+        <table class="ib-grid">
+          <thead>
+            <tr>
+              <th class="lab"></th>
+              <th style="width:120px;">Rate (PHP/hr)</th>
+              <th style="width:110px;">Hours</th>
+              <th style="width:130px;">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="lab">Regular</td>
+              <td rowspan="4" style="vertical-align:middle;">
+                <div class="ib-amt" id="eh-rate-disp" style="color:var(--ink-soft);" title="Set by your admin — not editable here">—</div>
+              </td>
+              <td><input type="number" id="eh-regular" step="0.25" min="0" oninput="onEhFieldChange()"></td>
+              <td class="ib-amt" id="eh-regular-amt">—</td>
+            </tr>
+            <tr>
+              <td class="lab">Overtime</td>
+              <td><input type="number" id="eh-overtime" step="0.25" min="0" oninput="onEhFieldChange()"></td>
+              <td class="ib-amt" id="eh-overtime-amt">—</td>
+            </tr>
+            <tr>
+              <td class="lab">Holiday</td>
+              <td><input type="number" id="eh-holiday" step="0.25" min="0" oninput="onEhFieldChange()"></td>
+              <td class="ib-amt" id="eh-holiday-amt">—</td>
+            </tr>
+            <tr>
+              <td class="lab">Leave <small style="font-weight:400; color:var(--ink-muted); display:block;">VL/SL</small></td>
+              <td><input type="number" id="eh-leave" step="0.25" min="0" oninput="onEhFieldChange()"></td>
+              <td class="ib-amt" id="eh-leave-amt">—</td>
+            </tr>
+            <tr class="ib-total-row">
+              <td class="lab">Total</td>
+              <td></td>
+              <td class="ib-amt" id="eh-total-hours">0</td>
+              <td class="ib-amt amt" id="eh-total-amt-hourly">—</td>
+            </tr>
+          </tbody>
+        </table>
+        <p style="font-size:10.5px; color:var(--ink-muted); margin-top:6px;">
+          Rate is set by your admin and can't be changed here. Holiday pay is often a different rate than regular pay — your admin confirms the exact rate during final review. Amounts are always calculated (hours × rate).
+        </p>
+      </div>
+
+      <div id="eh-monthly-block" style="display:none;">
+        <table class="ib-grid">
+          <tbody>
+            <tr>
+              <td class="lab">Monthly salary</td>
+              <td colspan="2"><div class="ib-amt" id="eh-salary-disp" style="color:var(--ink-soft);" title="Set by your admin — not editable here">—</div></td>
+              <td class="ib-amt" id="eh-salary-amt">—</td>
+            </tr>
+            <tr>
+              <td class="lab">Holiday <small style="font-weight:400; color:var(--ink-muted); display:block;">hrs × rate</small></td>
+              <td style="width:90px;"><input type="number" id="eh-holiday-m" step="0.25" min="0" oninput="onEhFieldChange()"></td>
+              <td rowspan="2" style="width:110px; vertical-align:middle;">
+                <div class="ib-amt" id="eh-rate-m-disp" style="color:var(--ink-soft);" title="Set by your admin — not editable here">—</div>
+              </td>
+              <td class="ib-amt" id="eh-holiday-m-amt">—</td>
+            </tr>
+            <tr>
+              <td class="lab">Leave <small style="font-weight:400; color:var(--ink-muted); display:block;">VL/SL</small></td>
+              <td style="width:90px;"><input type="number" id="eh-leave-m" step="0.25" min="0" oninput="onEhFieldChange()"></td>
+              <td class="ib-amt" id="eh-leave-m-amt">—</td>
+            </tr>
+            <tr class="ib-total-row">
+              <td class="lab">Total</td>
+              <td></td><td></td>
+              <td class="ib-amt amt" id="eh-total-amt-monthly">—</td>
+            </tr>
+          </tbody>
+        </table>
+        <p style="font-size:10.5px; color:var(--ink-muted); margin-top:6px;">
+          Salary and rate are set by your admin and can't be changed here. Holiday pay is often a different rate than regular pay — your admin confirms the exact rate during final review.
+        </p>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm" onclick="closeEmpHoursModal()">Cancel</button>
+      <button class="btn btn-navy btn-sm" onclick="continueToRequestPreview()">Continue → Preview invoice</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-backdrop" id="invoice-modal">
   <div class="modal" style="max-width:880px; width:96%;">
     <div class="modal-header no-print">
@@ -1988,6 +2094,7 @@
       <button class="btn btn-ghost btn-sm" onclick="closeInvoiceModal()">Close</button>
       <button class="btn btn-ghost btn-sm" onclick="window.print()">Print / Save PDF</button>
       <button class="btn btn-sm" id="inv-save-btn" onclick="saveInvoice()">Save invoice</button>
+      <button class="btn btn-ghost btn-sm" id="inv-back-to-hours-btn" style="display:none;" onclick="backToEmpHours()">← Back to hours</button>
       <button class="btn btn-navy btn-sm" id="inv-request-btn" style="display:none;" onclick="submitInvoiceRequest()">Submit request</button>
     </div>
   </div>
@@ -2082,6 +2189,10 @@ function invoiceFromRow(r) {
     overtimeHours: Number(r.overtime_hours) || 0,
     holidayHours: Number(r.holiday_hours) || 0,
     leaveHours: Number(r.leave_hours) || 0,
+    /* Holiday pay is frequently a different rate than everything else on
+     * the invoice (double pay, 1.5×, +30%, etc.) — falls back to the base
+     * rate for any invoice saved before this column existed. */
+    holidayRate: (r.holiday_rate === null || r.holiday_rate === undefined) ? (Number(r.rate) || 0) : Number(r.holiday_rate),
     excessHours: Number(r.excess_hours) || 0,
     capHours: (r.cap_hours === null || r.cap_hours === undefined) ? null : Number(r.cap_hours),
     totalAmount: Number(r.total_amount) || 0,
@@ -5671,6 +5782,9 @@ let PENDING_INVOICE = null;
 /* Holds the employee's in-progress invoice request while they review the
  * preview; cleared on close or after submitting. */
 let REQUEST_PREVIEW = null;
+/* Holds the employee's in-progress hours edit (the step before the request
+ * preview) — { userId, start, end, basis, computed, regularDirty }. */
+let EMP_HOURS = null;
 
 /* ============== INVOICE BUILDER ==============
  * Sits between "pick an employee" and "here is the printable invoice".
@@ -5873,11 +5987,17 @@ function recomputeBuilder(reseed) {
     /* Hourly block. Leave hours are seeded from the employee's actual
      * approved VL/SL for this period — same treatment as Holiday: pre-filled
      * with the real number, but still admin-editable for the rare correction.
-     * Rate is NOT seeded separately here; it shares ib-rate via rowspan. */
+     * ib-rate is shared by Regular/Overtime/Leave via rowspan. Holiday gets
+     * its OWN rate (ib-hol-rate) — holiday pay is frequently a different
+     * multiplier than regular pay (double pay, 1.5×, +30%, etc.), so it must
+     * never be tied to the same value as everything else. Defaulted to the
+     * base rate as a starting point only; the admin needs to confirm/adjust
+     * it to whatever premium actually applies before sending. */
     const seedHourly = {
       'ib-rate': computed.rate,
       'ib-regular': computed.regularHours,
       'ib-overtime': computed.overtimeHours,
+      'ib-hol-rate': computed.rate,
       'ib-holiday': computed.holidayHours,
       'ib-leave': computed.leaveHours
     };
@@ -5890,9 +6010,10 @@ function recomputeBuilder(reseed) {
     /* Monthly block. Salary defaults from the employee's stored monthly
      * salary; if they don't have one on file (e.g. normally hourly, admin is
      * overriding just this invoice), fall back to the computed hourly total
-     * as a reasonable starting point. Holiday's rate field is shared with
-     * Leave via rowspan, so only one rate needs seeding. Leave hours are
-     * seeded from actual approved VL/SL, same treatment as Holiday hours. */
+     * as a reasonable starting point. Holiday and Leave each get their OWN
+     * rate field now — holiday pay is often a different multiplier than
+     * regular pay, so it must never share a value with Leave (which should
+     * stay at the plain rate, no premium). */
     const salaryDefault = (u.payBasis === 'monthly' && u.monthlySalary)
       ? u.monthlySalary
       : round2(computed.regularAmount);
@@ -5900,7 +6021,8 @@ function recomputeBuilder(reseed) {
       'ib-monthly-salary': salaryDefault,
       'ib-holiday-m': computed.holidayHours,
       'ib-hol-rate-m': computed.rate,
-      'ib-leave-m': computed.leaveHours
+      'ib-leave-m': computed.leaveHours,
+      'ib-leave-rate-m': computed.rate
     };
     for (const id in seedMonthly) {
       const el = document.getElementById(id);
@@ -5932,12 +6054,14 @@ function onIbFieldChange(field) {
     'ib-rate': c.rate,
     'ib-regular': c.regularHours,
     'ib-overtime': c.overtimeHours,
+    'ib-hol-rate': c.rate,
     'ib-holiday': c.holidayHours,
     'ib-leave': c.leaveHours,
     'ib-monthly-salary': salaryDefault,
     'ib-holiday-m': c.holidayHours,
     'ib-hol-rate-m': c.rate,
-    'ib-leave-m': c.leaveHours
+    'ib-leave-m': c.leaveHours,
+    'ib-leave-rate-m': c.rate
   };
   const el = document.getElementById(field);
   const edited = round2(ibNum(field)) !== round2(map[field]);
@@ -5959,11 +6083,11 @@ function refreshBuilderTotals() {
     const holHrs = ibNum('ib-holiday-m');
     const holRate = ibNum('ib-hol-rate-m');
     const holAmt = round2(holHrs * holRate);
-    /* Leave hours come from its own input (auto-filled, admin-editable);
-     * the rate is the SAME shared field as Holiday's (merged via rowspan in
-     * the markup), not a separate value. */
+    /* Leave has its OWN rate now — never tied to Holiday's, which is often a
+     * different premium multiplier (double pay, 1.5×, +30%, etc.). */
     const lvHrs = ibNum('ib-leave-m');
-    const lvAmt = round2(lvHrs * holRate);
+    const lvRate = ibNum('ib-leave-rate-m');
+    const lvAmt = round2(lvHrs * lvRate);
     total = round2(salary + holAmt + lvAmt + lineNet);
 
     document.getElementById('ib-monthly-salary-amt').textContent = currency(salary);
@@ -5974,16 +6098,17 @@ function refreshBuilderTotals() {
     const rate = ibNum('ib-rate');
     const reg = ibNum('ib-regular');
     const ot = ibNum('ib-overtime');
+    /* Holiday has its OWN rate now — never tied to the regular rate, since
+     * holiday pay is frequently a different multiplier (double pay, 1.5×,
+     * +30%, etc.). Leave still shares the regular rate (no premium). */
+    const holRate = ibNum('ib-hol-rate');
     const hol = ibNum('ib-holiday');
-    /* Leave hours come from its own input (auto-filled, admin-editable);
-     * the rate is the SAME shared ib-rate field (merged via rowspan in the
-     * markup), not a separate value. */
     const lv = ibNum('ib-leave');
     const lvAmt = round2(lv * rate);
 
     const regAmt = round2(reg * rate);
     const otAmt = round2(ot * rate);
-    const holAmt = round2(hol * rate);
+    const holAmt = round2(hol * holRate);
     total = round2(regAmt + otAmt + holAmt + lvAmt + lineNet);
 
     document.getElementById('ib-regular-amt').textContent = currency(regAmt);
@@ -6036,10 +6161,10 @@ function buildInvoiceFromBuilder() {
     const holiday = ibNum('ib-holiday-m');
     const holRate = ibNum('ib-hol-rate-m');
     const holAmt = round2(holiday * holRate);
-    /* Leave hours come from the input (admin-editable, auto-filled); rate is
-     * the same shared field as Holiday's. */
+    /* Leave has its OWN rate now — never tied to Holiday's premium rate. */
     const leave = ibNum('ib-leave-m');
-    const leaveAmt = round2(leave * holRate);
+    const leaveRate = ibNum('ib-leave-rate-m');
+    const leaveAmt = round2(leave * leaveRate);
 
     return {
       user: u,
@@ -6057,7 +6182,8 @@ function buildInvoiceFromBuilder() {
       holidayDates: c.holidayDates,
       leaveDates: c.leaveDates,
       cap: null,
-      rate: holRate,                /* kept for the Holiday line's hrs × rate */
+      rate: leaveRate,              /* the base/leave rate; holiday's premium is separate */
+      holidayRate: holRate,
       regularAmount: salary,
       holidayAmount: holAmt,
       leaveAmount: leaveAmt,
@@ -6071,12 +6197,13 @@ function buildInvoiceFromBuilder() {
   const rate = ibNum('ib-rate');
   const regular = ibNum('ib-regular');
   const overtime = ibNum('ib-overtime');
+  /* Holiday has its OWN rate now — a premium multiplier that's frequently
+   * different from the regular rate. Leave still shares the regular rate. */
+  const holRate = ibNum('ib-hol-rate');
   const holiday = ibNum('ib-holiday');
-  /* Leave hours come from the input (admin-editable, auto-filled); rate is
-   * the same shared ib-rate field used by Regular/Overtime/Holiday. */
   const leave = ibNum('ib-leave');
   const regAmt = round2(regular * rate);
-  const holAmt = round2(holiday * rate);
+  const holAmt = round2(holiday * holRate);
   const otAmt = round2(overtime * rate);
   const leaveAmt = round2(leave * rate);
 
@@ -6100,6 +6227,7 @@ function buildInvoiceFromBuilder() {
     leaveDates: c.leaveDates,
     cap: c.cap,
     rate,
+    holidayRate: holRate,
     regularAmount: regAmt,
     holidayAmount: holAmt,
     leaveAmount: leaveAmt,
@@ -6163,6 +6291,10 @@ function openInvoicePreview(inv, existing, mode) {
   const leave    = existing ? existing.leaveHours    : (inv.leaveHours || 0);
   const excess   = existing ? existing.excessHours   : inv.excessHours;
   const rate     = existing ? existing.rate          : inv.rate;
+  /* Holiday pay is frequently a different rate than everything else on the
+   * invoice (double pay, 1.5×, +30%, etc.) — falls back to the base rate
+   * for anything computed before this distinction existed. */
+  const holRate  = existing ? existing.holidayRate    : (inv.holidayRate || inv.rate);
   const total    = existing ? existing.totalAmount   : inv.total;
   /* A saved invoice keeps its line items in D.invoiceLineItems (looked up by
    * id); a not-yet-saved preview carries them directly on inv. */
@@ -6173,7 +6305,7 @@ function openInvoicePreview(inv, existing, mode) {
 
   const regAmt = round2(regular * rate);
   const otAmt  = round2(overtime * rate);
-  const holAmt = round2(holiday * rate);
+  const holAmt = round2(holiday * holRate);
   const leaveAmt = round2(leave * rate);
   const billedHours = round2(regular + overtime + holiday + leave);
   const isMonthly = payBasis === 'monthly';
@@ -6215,7 +6347,7 @@ function openInvoicePreview(inv, existing, mode) {
           </tr>
           ${holiday > 0 ? `<tr>
             <td class="lab">HOLIDAY HOURS</td>
-            <td class="mono">${currency(rate)}</td>
+            <td class="mono">${currency(holRate)}</td>
             <td class="mono">${holiday}</td>
             <td class="mono">${currency(holAmt)}</td>
             <td></td>
@@ -6244,7 +6376,7 @@ function openInvoicePreview(inv, existing, mode) {
           </tr>
           <tr>
             <td class="lab">HOLIDAY HOURS</td>
-            <td class="mono">${currency(rate)}</td>
+            <td class="mono">${currency(holRate)}</td>
             <td class="mono">${holiday}</td>
             <td class="mono">${currency(holAmt)}</td>
             <td></td>
@@ -6351,12 +6483,14 @@ function openInvoicePreview(inv, existing, mode) {
 
   const saveBtn = document.getElementById('inv-save-btn');
   const requestBtn = document.getElementById('inv-request-btn');
+  const backBtn = document.getElementById('inv-back-to-hours-btn');
   const concernWrap = document.getElementById('inv-request-concern-wrap');
   const itemsWrap = document.getElementById('inv-request-items-wrap');
   if (isRequest) {
     PENDING_INVOICE = null;          /* not an admin save */
     saveBtn.style.display = 'none';
     requestBtn.style.display = '';
+    backBtn.style.display = '';
     concernWrap.style.display = '';
     itemsWrap.style.display = '';
     /* Restore rather than clear: this modal is re-rendered every time the
@@ -6368,12 +6502,14 @@ function openInvoicePreview(inv, existing, mode) {
     PENDING_INVOICE = null;
     saveBtn.style.display = 'none';
     requestBtn.style.display = 'none';
+    backBtn.style.display = 'none';
     concernWrap.style.display = 'none';
     itemsWrap.style.display = 'none';
   } else {
     PENDING_INVOICE = { inv, invoiceNo, invoiceDate };
     saveBtn.style.display = '';
     requestBtn.style.display = 'none';
+    backBtn.style.display = 'none';
     concernWrap.style.display = 'none';
     itemsWrap.style.display = 'none';
   }
@@ -6386,8 +6522,11 @@ function closeInvoiceModal() {
   PENDING_INVOICE = null;
   REVISING_ID = null;   /* closing the preview abandons an in-progress revise */
   REQUEST_PREVIEW = null;  /* closing without submitting abandons the request */
+  EMP_HOURS = null;
   const requestBtn = document.getElementById('inv-request-btn');
   if (requestBtn) requestBtn.style.display = 'none';
+  const backBtn = document.getElementById('inv-back-to-hours-btn');
+  if (backBtn) backBtn.style.display = 'none';
 }
 
 /* Persist the invoice. Hours/rate are SNAPSHOTTED, so a later rate change or a
@@ -6439,6 +6578,7 @@ async function saveInvoice() {
           round2(inv.regularHours) === round2(orig.regularHours) &&
           round2(inv.overtimeHours) === round2(orig.overtimeHours) &&
           round2(inv.holidayHours) === round2(orig.holidayHours) &&
+          round2(inv.holidayRate || inv.rate || 0) === round2(orig.holidayRate || orig.rate || 0) &&
           round2(inv.leaveHours || 0) === round2(orig.leaveHours || 0) &&
           round2(inv.total) === round2(orig.totalAmount) &&
           (inv.payBasis || 'hourly') === (orig.payBasis || 'hourly') &&
@@ -6463,6 +6603,7 @@ async function saveInvoice() {
         overtime_hours: inv.overtimeHours,
         holiday_hours: inv.holidayHours,
         leave_hours: inv.leaveHours || 0,
+        holiday_rate: inv.holidayRate || inv.rate || 0,
         excess_hours: inv.excessHours,
         cap_hours: inv.cap,
         pay_basis: inv.payBasis || 'hourly',
@@ -6487,7 +6628,7 @@ async function saveInvoice() {
       Object.assign(orig, {
         invoiceNo: finalInvoiceNo,
         rate: inv.rate, regularHours: inv.regularHours, overtimeHours: inv.overtimeHours,
-        holidayHours: inv.holidayHours, leaveHours: inv.leaveHours || 0, excessHours: inv.excessHours, capHours: inv.cap,
+        holidayHours: inv.holidayHours, leaveHours: inv.leaveHours || 0, holidayRate: inv.holidayRate || inv.rate || 0, excessHours: inv.excessHours, capHours: inv.cap,
         payBasis: patch.pay_basis, monthlySalary: patch.monthly_salary,
         totalAmount: inv.total, revision: patch.revision, workflow: finalWorkflow,
         sentAt: patch.sent_at, disputedAt: null, disputeReason: null,
@@ -6523,6 +6664,7 @@ async function saveInvoice() {
     overtime_hours: inv.overtimeHours,
     holiday_hours: inv.holidayHours,
     leave_hours: inv.leaveHours || 0,
+    holiday_rate: inv.holidayRate || inv.rate || 0,
     excess_hours: inv.excessHours,
     cap_hours: inv.cap,
     pay_basis: inv.payBasis || 'hourly',
@@ -6668,14 +6810,60 @@ function reviewRequestedInvoice(id) {
   document.getElementById('ib-from').value = i.periodStart;
   document.getElementById('ib-to').value = i.periodEnd;
   onIbDateChange();
-  /* If the employee flagged a concern with their request, put it front and
-   * center while the admin reviews — this is exactly the moment it matters. */
+
+  /* Snapshot what a FRESH recompute says, before overwriting with the
+   * employee's real submitted figures below — this is the baseline the
+   * "what changed" summary compares against. */
+  const fresh = IB.computed;
+
+  /* onIbDateChange() just seeded every field from that fresh computation —
+   * but the admin's "final check" here is on what the employee actually
+   * submitted, which they may have adjusted themselves. Overwrite the
+   * fields with the real submitted figures so the admin sees exactly that;
+   * onIbFieldChange() will highlight any that differ from the fresh
+   * recompute as "dirty" (blue), so an employee's edit is visible on the
+   * field itself, not just silently replaced with today's numbers. */
+  const changes = [];   /* { label, from, to } for the explicit summary below */
+  function trackAndSet(id, freshVal, savedVal, label, fmt) {
+    document.getElementById(id).value = savedVal;
+    onIbFieldChange(id);
+    if (round2(Number(freshVal) || 0) !== round2(Number(savedVal) || 0)) {
+      changes.push({ label, from: fmt(freshVal), to: fmt(savedVal) });
+    }
+  }
+  const hrsFmt = v => `${round2(v)} hrs`;
+  const rateFmt = v => currency(v);
+
+  if (i.payBasis === 'monthly') {
+    trackAndSet('ib-hol-rate-m', fresh.rate, i.holidayRate, 'Holiday rate', rateFmt);
+    trackAndSet('ib-holiday-m', fresh.holidayHours, i.holidayHours, 'Holiday hours', hrsFmt);
+    trackAndSet('ib-leave-rate-m', fresh.rate, i.rate, 'Leave rate', rateFmt);
+    trackAndSet('ib-leave-m', fresh.leaveHours, i.leaveHours || 0, 'Leave hours', hrsFmt);
+  } else {
+    trackAndSet('ib-rate', fresh.rate, i.rate, 'Rate', rateFmt);
+    trackAndSet('ib-regular', fresh.regularHours, i.regularHours, 'Regular hours', hrsFmt);
+    trackAndSet('ib-overtime', fresh.overtimeHours, i.overtimeHours, 'Overtime hours', hrsFmt);
+    trackAndSet('ib-hol-rate', fresh.rate, i.holidayRate, 'Holiday rate', rateFmt);
+    trackAndSet('ib-holiday', fresh.holidayHours, i.holidayHours, 'Holiday hours', hrsFmt);
+    trackAndSet('ib-leave', fresh.leaveHours, i.leaveHours || 0, 'Leave hours', hrsFmt);
+  }
+
+  /* Front-and-center banner: concern, proposed allowances, AND — the part
+   * that matters most for a fast final check — exactly which figures the
+   * employee's submission differs on from what the system would calculate
+   * fresh today, with the before/after value for each. A colored field
+   * border is easy to miss; a plain-language list isn't. */
   const noteEl = document.getElementById('ib-request-note');
   const empName = D.users.find(u => u.id === i.userId)?.name || 'Employee';
   const proposed = D.invoiceLineItems.filter(li => li.invoiceId === i.id);
   const parts = [];
   if (i.requestNote) {
     parts.push(`<strong>⚠ ${empName} flagged a concern with this request:</strong><br>&ldquo;${i.requestNote.replace(/</g, '&lt;')}&rdquo;`);
+  }
+  if (changes.length) {
+    const list = changes.map(c => `${c.label}: ${c.from} → <strong>${c.to}</strong>`).join('<br>');
+    parts.push(`<strong>⚠ Submitted figures differ from a fresh system calculation:</strong><br>${list}<br>
+      <span style="font-size:11px; color:var(--ink-soft);">Highlighted in blue below. Review before approving.</span>`);
   }
   if (proposed.length) {
     const list = proposed.map(li => `${li.label} — ${currency(li.amount)}`).join('; ');
@@ -6842,46 +7030,200 @@ function requestInvoice() {
   const cyc = empRequestableCutoff();
   if (!u || !cyc) return;
 
-  /* Re-check for duplicates right before previewing (the page could have
-   * been open a while). */
+  /* Re-check for duplicates right before opening the review step (the page
+   * could have been open a while). */
   const existing = D.invoices.find(i =>
     i.userId === u.id && i.periodStart === cyc.start && i.periodEnd === cyc.end);
   if (existing) { toast('An invoice already exists for that period.'); renderEmpRequestPanel(); return; }
 
-  /* Same math the admin's builder runs. Shown to the employee as the real
-   * rendered invoice (not a text popup) so they see exactly what they're
-   * submitting, with a Submit button in place of the admin's Save. */
+  openEmpHoursModal(u, cyc);
+}
+
+/* ============== EMPLOYEE: EDITABLE HOURS REVIEW ==============
+ * The step before the final request preview. Hours are pulled from actual
+ * time entries and approved leave (same computeInvoice() math used
+ * everywhere else), pre-filled into editable fields the employee can adjust
+ * themselves — rate/salary are shown but locked, since pay rate is never
+ * something an employee sets. */
+function openEmpHoursModal(u, cyc) {
   const c = computeInvoice(u, cyc.start, cyc.end);
   const isMonthly = (u.payBasis === 'monthly') && !!u.monthlySalary;
 
-  const inv = {
-    user: u,
-    start: cyc.start,
-    end: cyc.end,
-    entries: c.entries,
-    workedHours: c.workedHours,
-    payBasis: isMonthly ? 'monthly' : 'hourly',
-    monthlySalary: isMonthly ? u.monthlySalary : null,
-    regularHours: isMonthly ? 0 : c.regularHours,
-    overtimeHours: 0,
-    holidayHours: c.holidayHours,
-    leaveHours: c.leaveHours,
-    excessHours: isMonthly ? 0 : c.excessHours,
-    holidayDates: c.holidayDates,
-    leaveDates: c.leaveDates,
-    cap: isMonthly ? null : c.cap,
-    rate: c.rate,
-    regularAmount: isMonthly ? u.monthlySalary : c.regularAmount,
-    holidayAmount: c.holidayAmount,
-    leaveAmount: c.leaveAmount,
-    lineItems: [],
-    total: isMonthly ? round2(u.monthlySalary + c.holidayAmount + c.leaveAmount) : c.total,
-    daysWorked: c.daysWorked,
-    overridden: false
-  };
+  EMP_HOURS = { userId: u.id, start: cyc.start, end: cyc.end, basis: isMonthly ? 'monthly' : 'hourly', computed: c, regularDirty: false };
 
-  REQUEST_PREVIEW = { base: inv, cyc, items: [], concern: '' };
+  document.getElementById('eh-period').textContent = `${fmtDate(cyc.start)} – ${fmtDate(cyc.end)}`;
+  document.getElementById('eh-hourly-block').style.display = isMonthly ? 'none' : '';
+  document.getElementById('eh-monthly-block').style.display = isMonthly ? '' : 'none';
+
+  if (isMonthly) {
+    document.getElementById('eh-salary-disp').textContent = currency(u.monthlySalary);
+    document.getElementById('eh-rate-m-disp').textContent = currency(c.rate);
+    document.getElementById('eh-holiday-m').value = c.holidayHours;
+    document.getElementById('eh-leave-m').value = c.leaveHours;
+  } else {
+    document.getElementById('eh-rate-disp').textContent = currency(c.rate);
+    document.getElementById('eh-regular').value = c.regularHours;
+    document.getElementById('eh-overtime').value = c.overtimeHours;
+    document.getElementById('eh-holiday').value = c.holidayHours;
+    document.getElementById('eh-leave').value = c.leaveHours;
+  }
+
+  const bits = [`Worked: <strong>${c.workedHours}</strong> hrs over ${c.daysWorked} day${c.daysWorked === 1 ? '' : 's'}`];
+  if (!isMonthly && c.cap !== null) bits.push(`Cap: <strong>${round2(c.cap)}</strong> hrs`);
+  if (c.holidayHours > 0) bits.push(`<span style="color:#8A6100;">Holiday: <strong>${c.holidayHours}</strong> hrs</span>`);
+  if (c.leaveHours > 0) bits.push(`<span style="color:#1E5BA8;">Leave (VL/SL): <strong>${c.leaveHours}</strong> hrs</span>`);
+  document.getElementById('eh-context').innerHTML = bits.join(' &nbsp;·&nbsp; ');
+
+  refreshEhTotals();
+  document.getElementById('emp-hours-modal').classList.add('active');
+}
+
+function closeEmpHoursModal() {
+  document.getElementById('emp-hours-modal').classList.remove('active');
+  EMP_HOURS = null;
+}
+
+function ehNum(id) {
+  const v = parseFloat(document.getElementById(id).value);
+  return isFinite(v) && v >= 0 ? v : 0;
+}
+
+function onEhFieldChange() {
+  if (!EMP_HOURS) return;
+  /* If the employee changes Regular away from the computed baseline, the
+   * cap/excess framing no longer applies to whatever they chose to bill —
+   * same rule the admin's builder already follows. */
+  if (EMP_HOURS.basis === 'hourly') {
+    EMP_HOURS.regularDirty = round2(ehNum('eh-regular')) !== round2(EMP_HOURS.computed.regularHours);
+  }
+  refreshEhTotals();
+}
+
+function refreshEhTotals() {
+  if (!EMP_HOURS) return;
+  const c = EMP_HOURS.computed;
+
+  if (EMP_HOURS.basis === 'monthly') {
+    const u = D.users.find(x => x.id === EMP_HOURS.userId);
+    const salary = u ? (u.monthlySalary || 0) : 0;
+    const holHrs = ehNum('eh-holiday-m');
+    const rate = c.rate;
+    const holAmt = round2(holHrs * rate);
+    const lvHrs = ehNum('eh-leave-m');
+    const lvAmt = round2(lvHrs * rate);
+    const total = round2(salary + holAmt + lvAmt);
+
+    document.getElementById('eh-salary-amt').textContent = currency(salary);
+    document.getElementById('eh-holiday-m-amt').textContent = currency(holAmt);
+    document.getElementById('eh-leave-m-amt').textContent = currency(lvAmt);
+    document.getElementById('eh-total-amt-monthly').textContent = currency(total);
+  } else {
+    const rate = c.rate;
+    const reg = ehNum('eh-regular');
+    const ot = ehNum('eh-overtime');
+    const hol = ehNum('eh-holiday');
+    const lv = ehNum('eh-leave');
+
+    const regAmt = round2(reg * rate);
+    const otAmt = round2(ot * rate);
+    const holAmt = round2(hol * rate);
+    const lvAmt = round2(lv * rate);
+    const total = round2(regAmt + otAmt + holAmt + lvAmt);
+
+    document.getElementById('eh-regular-amt').textContent = currency(regAmt);
+    document.getElementById('eh-overtime-amt').textContent = currency(otAmt);
+    document.getElementById('eh-holiday-amt').textContent = currency(holAmt);
+    document.getElementById('eh-leave-amt').textContent = currency(lvAmt);
+    document.getElementById('eh-total-amt-hourly').textContent = currency(total);
+    document.getElementById('eh-total-hours').textContent = round2(reg + ot + hol + lv);
+  }
+}
+
+/* Moves from the editable hours step to the final read-only preview + submit
+ * step, carrying the employee's (possibly adjusted) figures forward. */
+function continueToRequestPreview() {
+  if (!EMP_HOURS) return;
+  const u = D.users.find(x => x.id === EMP_HOURS.userId);
+  const c = EMP_HOURS.computed;
+  const isMonthly = EMP_HOURS.basis === 'monthly';
+
+  let inv;
+  if (isMonthly) {
+    const salary = u.monthlySalary || 0;
+    const holiday = ehNum('eh-holiday-m');
+    const leave = ehNum('eh-leave-m');
+    const holAmt = round2(holiday * c.rate);
+    const leaveAmt = round2(leave * c.rate);
+    inv = {
+      user: u, start: EMP_HOURS.start, end: EMP_HOURS.end,
+      entries: c.entries, workedHours: c.workedHours,
+      payBasis: 'monthly', monthlySalary: u.monthlySalary,
+      regularHours: 0, overtimeHours: 0,
+      holidayHours: round2(holiday), leaveHours: round2(leave),
+      excessHours: 0,
+      holidayDates: c.holidayDates, leaveDates: c.leaveDates,
+      cap: null, rate: c.rate,
+      /* Employee doesn't set a separate holiday rate — this is just a
+       * starting estimate at the base rate; admin confirms/corrects the
+       * actual premium (double pay, 1.5×, +30%, etc.) during final review. */
+      holidayRate: c.rate,
+      regularAmount: salary, holidayAmount: holAmt, leaveAmount: leaveAmt,
+      lineItems: [],
+      total: round2(salary + holAmt + leaveAmt),
+      daysWorked: c.daysWorked,
+      overridden: (round2(holiday) !== round2(c.holidayHours)) || (round2(leave) !== round2(c.leaveHours))
+    };
+  } else {
+    const regular = ehNum('eh-regular');
+    const overtime = ehNum('eh-overtime');
+    const holiday = ehNum('eh-holiday');
+    const leave = ehNum('eh-leave');
+    const regAmt = round2(regular * c.rate);
+    const otAmt = round2(overtime * c.rate);
+    const holAmt = round2(holiday * c.rate);
+    const leaveAmt = round2(leave * c.rate);
+    const overridden = EMP_HOURS.regularDirty
+      || round2(overtime) !== round2(c.overtimeHours)
+      || round2(holiday) !== round2(c.holidayHours)
+      || round2(leave) !== round2(c.leaveHours);
+    inv = {
+      user: u, start: EMP_HOURS.start, end: EMP_HOURS.end,
+      entries: c.entries, workedHours: c.workedHours,
+      payBasis: 'hourly', monthlySalary: null,
+      regularHours: round2(regular), overtimeHours: round2(overtime),
+      holidayHours: round2(holiday), leaveHours: round2(leave),
+      /* Same rule as the admin builder: overriding Regular means the excess/
+       * cap framing no longer applies to whatever they chose to bill. */
+      excessHours: EMP_HOURS.regularDirty ? 0 : c.excessHours,
+      holidayDates: c.holidayDates, leaveDates: c.leaveDates,
+      cap: c.cap, rate: c.rate,
+      /* Same reasoning as the monthly branch above. */
+      holidayRate: c.rate,
+      regularAmount: regAmt, holidayAmount: holAmt, leaveAmount: leaveAmt,
+      lineItems: [],
+      total: round2(regAmt + otAmt + holAmt + leaveAmt),
+      daysWorked: c.daysWorked,
+      overridden
+    };
+  }
+
+  document.getElementById('emp-hours-modal').classList.remove('active');
+  /* Preserve any allowances/concern already entered if they've been here
+   * before (i.e. they hit Back to adjust hours, then Continue again) —
+   * only start blank on the very first pass through. */
+  const priorItems = (REQUEST_PREVIEW && REQUEST_PREVIEW.items) || [];
+  const priorConcern = (REQUEST_PREVIEW && REQUEST_PREVIEW.concern) || '';
+  REQUEST_PREVIEW = { base: inv, cyc: { start: EMP_HOURS.start, end: EMP_HOURS.end }, items: priorItems, concern: priorConcern };
   refreshRequestPreview();
+}
+
+/* From the final preview, go back and adjust hours again — re-opens with
+ * whatever was already typed still in place (EMP_HOURS isn't touched by the
+ * preview step, so nothing is lost). */
+function backToEmpHours() {
+  if (!EMP_HOURS) return;   /* shouldn't happen from a request preview, but be safe */
+  document.getElementById('invoice-modal').classList.remove('active');
+  document.getElementById('emp-hours-modal').classList.add('active');
 }
 
 /* ---- Employee-proposed allowances on a request ----
@@ -6977,6 +7319,7 @@ async function submitInvoiceRequest() {
     overtime_hours: inv.overtimeHours,
     holiday_hours: inv.holidayHours,
     leave_hours: inv.leaveHours || 0,
+    holiday_rate: inv.holidayRate || inv.rate || 0,
     excess_hours: inv.excessHours,
     cap_hours: inv.cap,
     pay_basis: inv.payBasis,
