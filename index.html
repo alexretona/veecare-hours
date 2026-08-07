@@ -661,6 +661,15 @@
     max-width: 480px;
     overflow: hidden;
     box-shadow: 0 10px 40px rgba(30,58,138,0.18);
+    /* Never grow taller than the screen. Tall modals (the invoice builder in
+     * particular, once a concern banner + change summary + line items are all
+     * showing) used to overflow the viewport with no way to scroll, pushing
+     * the footer — and its Preview/Save buttons — permanently off-screen.
+     * Column layout + a capped height lets the BODY scroll on its own while
+     * the header and footer stay pinned and always reachable. */
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 40px);   /* 40px = the backdrop's 20px padding, top+bottom */
   }
   .modal-header {
     padding: 18px 22px;
@@ -668,11 +677,14 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
+    flex-shrink: 0;
   }
   .modal-title { font-size: 16px; font-weight: 600; color: var(--ink); }
   .modal-close { background: none; border: none; cursor: pointer; font-size: 22px; color: var(--ink-muted); line-height: 1; }
   .modal-close:hover { color: var(--ink); }
-  .modal-body { padding: 22px; }
+  /* The only part that scrolls — header and footer stay put via flex-shrink:0
+   * below, so the action buttons never scroll out of reach. */
+  .modal-body { padding: 22px; overflow-y: auto; flex: 1 1 auto; min-height: 0; }
   .modal-footer {
     padding: 14px 22px;
     border-top: 1px solid var(--line);
@@ -680,6 +692,8 @@
     justify-content: flex-end;
     gap: 8px;
     background: var(--paper);
+    flex-shrink: 0;
+    flex-wrap: wrap;
   }
 
   .row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
