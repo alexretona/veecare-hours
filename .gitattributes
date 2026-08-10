@@ -1,0 +1,3 @@
+# Normalize line endings in the repo so edits from the GitHub web UI and from a
+# local Windows checkout don't produce whole-file diffs.
+* text=auto
