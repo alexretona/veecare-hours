@@ -6612,6 +6612,15 @@ async function saveInvoice() {
 
       const patch = {
         invoice_no: finalInvoiceNo,
+        /* The billing period MUST be saved. Without these three lines an
+         * admin could change the dates during review, watch the hours
+         * recompute correctly on screen, save — and the invoice would keep
+         * the employee's ORIGINAL requested period, silently reverting the
+         * correction. That's how an invoice ended up dated for a period
+         * before the contractor had even started. */
+        period_start: inv.start,
+        period_end: inv.end,
+        invoice_date: invoiceDate,
         rate: inv.rate,
         regular_hours: inv.regularHours,
         overtime_hours: inv.overtimeHours,
@@ -6641,6 +6650,7 @@ async function saveInvoice() {
 
       Object.assign(orig, {
         invoiceNo: finalInvoiceNo,
+        periodStart: inv.start, periodEnd: inv.end, invoiceDate: invoiceDate,
         rate: inv.rate, regularHours: inv.regularHours, overtimeHours: inv.overtimeHours,
         holidayHours: inv.holidayHours, leaveHours: inv.leaveHours || 0, holidayRate: inv.holidayRate || inv.rate || 0, excessHours: inv.excessHours, capHours: inv.cap,
         payBasis: patch.pay_basis, monthlySalary: patch.monthly_salary,
@@ -6819,6 +6829,11 @@ function reviewRequestedInvoice(id) {
   if (!i) return;
   REVISING_ID = id;
   openInvoiceBuilder(i.userId, 0, true);
+  /* Start from the period the employee actually requested. The admin can
+   * change these dates from here — onIbDateChange() recomputes the hours for
+   * the new range, and saveInvoice() now persists whichever period is set at
+   * save time (it previously discarded date edits, so a correction made here
+   * silently reverted to the requested period). */
   IB.start = i.periodStart;
   IB.end = i.periodEnd;
   document.getElementById('ib-from').value = i.periodStart;
