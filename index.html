@@ -7004,7 +7004,16 @@ function empRequestableCutoff() {
   if (!u) return null;
   const cyc = currentCycle(u);
   if (!cyc) return null;   /* no cutoff configured for this employee */
-  /* The current cycle is by definition still in progress — the most recently
+  /* A biweekly cutoff is a raw 14-day block (Mon→Sun) but its END is trimmed
+   * back to the Friday (see trimWeekendEnd) — that's the date everyone treats
+   * as the end of the cutoff. So on the Sat/Sun tail the block is still the
+   * "current" one by index, yet the period people actually bill for is already
+   * over. Treating it as in-progress locked employees out all weekend: they
+   * finish Friday, try to generate Saturday morning, and get offered the
+   * PREVIOUS cutoff, which they've already invoiced.
+   * If today is past this cutoff's end, it's finished — offer it now. */
+  if (today() > cyc.end) return cyc;
+  /* Otherwise the current cycle really is still running, and the most recently
    * COMPLETED one is exactly one step back. */
   return shiftCycle(u, cyc, -1);
 }
