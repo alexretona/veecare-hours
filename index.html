@@ -2801,13 +2801,22 @@ function cycleLabel(cycle) {
  *                   work (if they worked, their real hours already count)
  *   cap           = the max BILLABLE hours for the cutoff (e.g. 80)
  *
- *   billable      = min(worked, cap)          <- what the client approved
- *   excess        = max(0, worked - cap)      <- NOT approved, NOT paid
+ *   paidTimeOff   = leaveHours + holidayHours  <- already-approved paid time
+ *   billable      = min(worked, cap - paidTimeOff)  <- what the client approved
+ *   excess        = max(0, worked - (cap - paidTimeOff))  <- NOT approved/paid
+ *
+ * Approved leave and paid holidays come OUT of the cutoff's approved hours,
+ * not on top of them: an 80-hour cutoff with one 8-hour VL day bills
+ * 72 regular + 8 leave = 80, never 79 + 8 = 87. Both are already approved, so
+ * they take their share of the cap first and the room left for WORKED hours
+ * shrinks by exactly that much.
+ *
+ * Leave/holiday hours themselves are never clamped to the cap — they come in
+ * whole half/full days (4h, 8h, …) determined by the time off actually taken
+ * in the cutoff, so trimming them would misstate it.
  *
  * Excess is surfaced on the invoice (struck through) and in the UI so nobody
- * is surprised, but it contributes ₱0 to the total. Holiday hours are credited
- * on top of the cap, because a declared holiday isn't the contractor working
- * unapproved overtime.
+ * is surprised, but it contributes ₱0 to the total.
  */
 /* Standard paid hours for a full-day leave, matching the same default used
  * for a full-day holiday (see hol-hours default of 8 in openHolidayModal) —
@@ -2857,15 +2866,12 @@ function computeInvoice(user, start, end) {
   const cap = (user.capHours === null || user.capHours === undefined || user.capHours === '')
     ? null : Number(user.capHours);
 
-  /* Approved leave is paid time off that comes OUT of the cutoff's approved
-   * hours, not on top of them. An 80-hour cutoff with one 8-hour VL day bills
-   * 72 regular + 8 leave = 80 — never 79 + 8 = 87. The leave is already
-   * approved, so it takes its share first and the room left for WORKED hours
-   * shrinks by exactly that much; anything beyond becomes excess (shown, not
-   * billed) just like any other over-cap hours.
-   * Paid holidays deliberately stay ON TOP of the cap (see the block comment
-   * above) — a declared holiday isn't the contractor working unapproved hours. */
-  const capForWorked = (cap === null) ? null : Math.max(0, cap - leaveHours);
+  /* Approved leave AND paid holidays are both paid time off that comes OUT of
+   * the cutoff's approved hours, not on top of them — see the block comment
+   * above. Neither is ever clamped itself; only the room left for WORKED hours
+   * shrinks, and anything past that becomes excess (shown, not billed). */
+  const paidTimeOff = leaveHours + holidayHours;
+  const capForWorked = (cap === null) ? null : Math.max(0, cap - paidTimeOff);
   const billable = (capForWorked !== null && worked > capForWorked) ? capForWorked : worked;
   const excess   = (capForWorked !== null && worked > capForWorked) ? (worked - capForWorked) : 0;
 

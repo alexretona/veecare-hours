@@ -79,6 +79,25 @@ A day with an actual time entry never also gets leave/holiday hours credited.
 - Full-day leave credits `STANDARD_DAY_HOURS` (8); partial-day credits its stored hours.
 - Hours above the employee's `capHours` become `excessHours` (shown, not billed).
 
+**Paid time off consumes the cap.** Approved leave *and* paid holidays come OUT
+of the cutoff's approved hours, not on top of them:
+
+```
+paidTimeOff = leaveHours + holidayHours
+billable    = min(worked, capHours - paidTimeOff)
+excess      = max(0, worked - (capHours - paidTimeOff))
+```
+
+An 80-hour cutoff with one 8-hour VL day bills **72 regular + 8 leave = 80** —
+never 79 + 8 = 87. Before this rule the admin was correcting every such invoice
+by hand. Holidays behaved differently (credited on top) until the owner
+confirmed on 2026-08-17 that they should count the same way — **don't revert
+holidays to on-top.**
+
+`leaveHours` / `holidayHours` are themselves **never clamped** to the cap. They
+come in whole half/full days (4h, 8h, …) set by the time off actually taken, so
+trimming them would misstate it. Only the room left for *worked* hours shrinks.
+
 ### Rates — three distinct concepts
 - **Regular rate** — shared by Regular, Overtime, and Leave.
 - **Holiday rate** — **independent**. PH holiday pay is often double pay, 1.5×,
