@@ -2857,8 +2857,17 @@ function computeInvoice(user, start, end) {
   const cap = (user.capHours === null || user.capHours === undefined || user.capHours === '')
     ? null : Number(user.capHours);
 
-  const billable = (cap !== null && worked > cap) ? cap : worked;
-  const excess   = (cap !== null && worked > cap) ? (worked - cap) : 0;
+  /* Approved leave is paid time off that comes OUT of the cutoff's approved
+   * hours, not on top of them. An 80-hour cutoff with one 8-hour VL day bills
+   * 72 regular + 8 leave = 80 — never 79 + 8 = 87. The leave is already
+   * approved, so it takes its share first and the room left for WORKED hours
+   * shrinks by exactly that much; anything beyond becomes excess (shown, not
+   * billed) just like any other over-cap hours.
+   * Paid holidays deliberately stay ON TOP of the cap (see the block comment
+   * above) — a declared holiday isn't the contractor working unapproved hours. */
+  const capForWorked = (cap === null) ? null : Math.max(0, cap - leaveHours);
+  const billable = (capForWorked !== null && worked > capForWorked) ? capForWorked : worked;
+  const excess   = (capForWorked !== null && worked > capForWorked) ? (worked - capForWorked) : 0;
 
   const rate = Number(user.rate) || 0;
   const regularAmt = billable * rate;
@@ -6999,22 +7008,53 @@ async function refreshMyInvoices() {
  * The request carries a system-calculated snapshot (same computeInvoice()
  * math the admin's builder uses) and lands in workflow='requested' for the
  * admin to review, add line items to, and approve. */
+/* An open (not yet clocked out) shift belonging to this cutoff. Shifts are
+ * stored under their CLOCK-IN date, so a night shift starting 8pm Friday and
+ * ending 5am Saturday still belongs to a cutoff whose last day is Friday. */
+function openShiftInCycle(user, cyc) {
+  if (!user || !cyc) return null;
+  return D.entries.find(e =>
+    e.userId === user.id && e.status === 'in-progress' &&
+    e.date >= cyc.start && e.date <= cyc.end) || null;
+}
+
+/* Is this cutoff finished enough to invoice?
+ * Admin rule: an employee can request as soon as they CLOCK OUT on the last
+ * day — they shouldn't have to wait for the next calendar day.
+ *
+ *   today < end                  no  — the cutoff is still running
+ *   open shift inside the cutoff no  — those hours aren't final yet. This is
+ *                                     the night-shift case: a Friday 8pm shift
+ *                                     is still open at 2am Saturday, so even
+ *                                     though the calendar date has rolled past
+ *                                     the cutoff's last day, the work has not
+ *                                     finished. They become eligible when they
+ *                                     clock out at 5am.
+ *   today > end, nothing open    yes — period over, all shifts closed
+ *   today === end                yes, but only once they've actually clocked
+ *                                     out that day. If they never worked the
+ *                                     last day (rest day, leave, holiday) there
+ *                                     is nothing to wait for and they simply
+ *                                     become eligible the next day. */
+function cycleReadyToInvoice(user, cyc) {
+  if (!user || !cyc) return false;
+  const t = today();
+  if (t < cyc.end) return false;
+  if (openShiftInCycle(user, cyc)) return false;
+  if (t > cyc.end) return true;
+  return D.entries.some(e =>
+    e.userId === user.id && e.status === 'completed' && e.date === cyc.end);
+}
+
 function empRequestableCutoff() {
   const u = currentUser();
   if (!u) return null;
   const cyc = currentCycle(u);
   if (!cyc) return null;   /* no cutoff configured for this employee */
-  /* A biweekly cutoff is a raw 14-day block (Mon→Sun) but its END is trimmed
-   * back to the Friday (see trimWeekendEnd) — that's the date everyone treats
-   * as the end of the cutoff. So on the Sat/Sun tail the block is still the
-   * "current" one by index, yet the period people actually bill for is already
-   * over. Treating it as in-progress locked employees out all weekend: they
-   * finish Friday, try to generate Saturday morning, and get offered the
-   * PREVIOUS cutoff, which they've already invoiced.
-   * If today is past this cutoff's end, it's finished — offer it now. */
-  if (today() > cyc.end) return cyc;
-  /* Otherwise the current cycle really is still running, and the most recently
-   * COMPLETED one is exactly one step back. */
+  /* The cutoff you're currently "in" becomes invoiceable the moment its work is
+   * actually finished — which can be the last day itself, right after clocking
+   * out. Otherwise the most recently COMPLETED one is exactly one step back. */
+  if (cycleReadyToInvoice(u, cyc)) return cyc;
   return shiftCycle(u, cyc, -1);
 }
 
@@ -7027,6 +7067,17 @@ function renderEmpRequestPanel() {
   if (!cyc) {
     panel.innerHTML = `<span style="font-size:12px; color:var(--ink-muted);">
       Invoice requests aren't available yet — no billing cutoff is configured for your account. Please contact your admin.</span>`;
+    return;
+  }
+
+  /* If the cutoff that just ended is only waiting on a shift they haven't
+   * clocked out of, say so plainly. Without this they'd silently fall back to
+   * the PREVIOUS cutoff (already invoiced) and hit a confusing dead end. */
+  const cur = currentCycle(u);
+  if (cur && today() >= cur.end && openShiftInCycle(u, cur)) {
+    panel.innerHTML = `<span style="font-size:12px; color:var(--ink-soft);">
+      Your cutoff (<strong style="color:var(--ink)">${fmtDate(cur.start)} – ${fmtDate(cur.end)}</strong>)
+      is ready to invoice as soon as you clock out of your current shift.</span>`;
     return;
   }
 
