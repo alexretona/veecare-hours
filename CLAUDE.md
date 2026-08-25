@@ -56,11 +56,16 @@ them into the **Supabase SQL editor** manually. There is no migration runner.
 | `holidays` | Company-wide or per-employee. Paid/unpaid, hours |
 | `invoices` | Invoice snapshots + workflow state |
 | `invoice_line_items` | Allowances / incentives / deductions per invoice |
+| `org_settings` | Single pinned row (`id = 1`). Company-wide holiday multipliers |
 
 ### Migration history
-`veecare_migration.sql` is the base; then 003–012 in order.
+`veecare_migration.sql` is the base; then 003–013 in order.
 Notable: 007 termination · 008 line items + request flow · 009 request concern
-note · 010 employee-proposed allowances · 011 leave hours · 012 separate holiday rate.
+note · 010 employee-proposed allowances · 011 leave hours · 012 separate holiday rate
+· 013 holiday multipliers + holiday types.
+
+⚠️ Only `013` exists as a file in `migrations/`. Everything before it was never
+handed over — treat the **live Supabase schema as the source of truth**.
 
 ---
 
@@ -100,9 +105,30 @@ trimming them would misstate it. Only the room left for *worked* hours shrinks.
 
 ### Rates — three distinct concepts
 - **Regular rate** — shared by Regular, Overtime, and Leave.
-- **Holiday rate** — **independent**. PH holiday pay is often double pay, 1.5×,
-  or +30%. It has its own column (`holiday_rate`) and its own input.
-  *Never re-merge holiday rate with the regular rate.*
+- **Holiday rate** — **independent**, and *derived from a multiplier*, never typed
+  per invoice. *Never re-merge holiday rate with the regular rate.*
+
+  Two holiday types, each with its own premium (migration 013):
+
+  | Type | `holidays.holiday_type` | Default |
+  |---|---|---|
+  | Regular holiday | `regular` | 2.0× |
+  | Special non-working day | `special` | 1.3× |
+
+  Resolution order, implemented **only** in `holidayMultipliers(user)` — never
+  duplicate it: the employee's own `profiles.regular_holiday_multiplier` /
+  `special_holiday_multiplier` (NULL = inherit) → `org_settings` → the statutory
+  constants. A per-person override is how a contractor gets e.g. 1.5×.
+
+  `computeInvoice` returns both buckets (`holidayHours` / `specialHolidayHours`)
+  with `holidayRate` / `specialHolidayRate` already multiplied out, and the
+  invoice prints them as **separate rows** so each rate is auditable. The row is
+  only labelled "REGULAR HOLIDAY" once a special bucket exists, so older
+  invoices keep their original wording.
+
+  HR sets the company rates under **Holidays → Company holiday rates** and
+  per-person overrides under **Employees → Edit pay**. Nothing about holiday pay
+  should require editing an invoice by hand.
 - **Monthly basis** — fixed salary, doesn't multiply by hours; holiday/leave add on top.
 
 ### Invoice workflow
