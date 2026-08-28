@@ -1110,7 +1110,10 @@
           <div class="page-title">Employees</div>
           <div class="page-sub">Manage team members and rates</div>
         </div>
-        <button class="btn btn-navy" onclick="openEmpModal()">+ Add employee</button>
+        <div style="display:flex; gap:8px;">
+          <button class="btn btn-ghost btn-sm" onclick="openAnnualResetModal()" title="Close a leave year: archive balances, then reset to each entitlement">Annual leave reset</button>
+          <button class="btn btn-navy" onclick="openEmpModal()">+ Add employee</button>
+        </div>
       </div>
 
       <div class="toolbar">
@@ -1378,6 +1381,22 @@
         </p>
       </div>
       <div id="lb-diff" style="font-size:12px;"></div>
+
+      <div style="margin-top:16px; padding-top:14px; border-top:1px solid var(--line);">
+        <label style="font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-muted);">Yearly entitlement</label>
+        <p style="font-size:11px; color:var(--ink-muted); margin:4px 0 8px;">
+          What the annual reset restores this person to. Leave blank to use the company default.
+        </p>
+        <div class="row-2">
+          <div class="field"><label>VL / yr</label><input type="number" id="lb-vl-alloc" step="0.5" min="0" max="365"></div>
+          <div class="field"><label>SL / yr</label><input type="number" id="lb-sl-alloc" step="0.5" min="0" max="365"></div>
+        </div>
+        <div class="field" style="max-width:calc(50% - 7px);">
+          <label>EL / yr</label><input type="number" id="lb-el-alloc" step="0.5" min="0" max="365">
+        </div>
+      </div>
+
+      <div id="lb-history" style="margin-top:14px;"></div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-ghost btn-sm" onclick="closeLeaveBalanceModal()">Cancel</button>
@@ -1385,6 +1404,44 @@
     </div>
   </div>
 </div>
+
+<!-- ANNUAL LEAVE RESET (admin) -->
+<div class="modal-backdrop" id="annual-reset-modal">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-header">
+      <div class="modal-title">Annual leave reset</div>
+      <button class="modal-close" onclick="closeAnnualResetModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12px; color:var(--ink-soft); margin:0 0 12px;">
+        Closes a leave year: each balance below is <strong>saved to history</strong>,
+        then reset to that person&rsquo;s yearly entitlement. History stays
+        visible to admins only.
+      </p>
+      <div class="field" style="max-width:200px;">
+        <label>Leave year to close</label>
+        <input type="number" id="ar-year" step="1" min="2000" max="2100" onchange="renderAnnualResetPreview()">
+      </div>
+      <div id="ar-warning"></div>
+      <div class="panel" style="overflow-x:auto; margin-top:8px;">
+        <table>
+          <thead><tr><th>Employee</th><th>VL</th><th>SL</th><th>EL</th></tr></thead>
+          <tbody id="ar-rows"></tbody>
+        </table>
+      </div>
+      <div class="field" style="margin-top:12px;">
+        <label>Reason recorded against every employee</label>
+        <input type="text" id="ar-reason" maxlength="200">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm" onclick="closeAnnualResetModal()">Cancel</button>
+      <button class="btn btn-sm" id="ar-run-btn" onclick="runAnnualLeaveReset()">Close year &amp; reset</button>
+    </div>
+  </div>
+</div>
+
+<!-- ANNUAL LEAVE RESET (admin) end -->
 
 <!-- RECORD PRE-SYSTEM LEAVE (admin) -->
 <div class="modal-backdrop" id="backfill-leave-modal">
@@ -2310,6 +2367,11 @@ function profileFromRow(r) {
     /* Emergency Leave got a balance in migration 014. NULL means it was
      * never configured for this employee, which reads as 0 remaining. */
     elBalance: r.el_balance ?? 0,
+    /* Yearly entitlement override (migration 015). NULL = inherit the
+     * company default, so raising the company number lifts everyone. */
+    vlAllocation: (r.vl_allocation === null || r.vl_allocation === undefined) ? null : Number(r.vl_allocation),
+    slAllocation: (r.sl_allocation === null || r.sl_allocation === undefined) ? null : Number(r.sl_allocation),
+    elAllocation: (r.el_allocation === null || r.el_allocation === undefined) ? null : Number(r.el_allocation),
     flexEnabled: !!r.flex_enabled,   /* flexible hours: employee may pause/resume the shift clock */
     timezone: r.timezone || null,    /* IANA zone, e.g. "America/New_York"; null = treat as PHT */
 
@@ -2338,6 +2400,17 @@ function profileFromRow(r) {
     terminatedAt: r.terminated_at || null,
     terminationReason: r.termination_reason || '',
     terminatedBy: r.terminated_by || null
+  };
+}
+function leaveSnapshotFromRow(r) {
+  return {
+    id: r.id,
+    userId: r.user_id,
+    leaveYear: Number(r.leave_year),
+    vlBalance: Number(r.vl_balance) || 0,
+    slBalance: Number(r.sl_balance) || 0,
+    elBalance: Number(r.el_balance) || 0,
+    snapshotAt: r.snapshot_at
   };
 }
 function holidayFromRow(r) {
@@ -2516,7 +2589,7 @@ function coaFromRow(r) {
  * the admin gets all rows. We load into the same cache shape the UI expects.
  */
 async function hydrate() {
-  const [profilesRes, entriesRes, leavesRes, coasRes, holsRes, invRes, liRes, orgRes] = await Promise.all([
+  const [profilesRes, entriesRes, leavesRes, coasRes, holsRes, invRes, liRes, orgRes, snapRes] = await Promise.all([
     sb.from('profiles').select('*'),
     sb.from('time_entries').select('*').is('deleted_at', null),
     sb.from('leave_requests').select('*'),
@@ -2524,7 +2597,8 @@ async function hydrate() {
     sb.from('holidays').select('*'),
     sb.from('invoices').select('*'),
     sb.from('invoice_line_items').select('*'),
-    sb.from('org_settings').select('*').limit(1).maybeSingle()
+    sb.from('org_settings').select('*').limit(1).maybeSingle(),
+    sb.from('leave_year_snapshots').select('*')
   ]);
   if (profilesRes.error) throw profilesRes.error;
   if (entriesRes.error) throw entriesRes.error;
@@ -2544,10 +2618,13 @@ async function hydrate() {
   /* Same additive treatment: if migration 013 hasn't been run, leave this null
    * and holidayMultipliers() falls back to the statutory defaults. */
   D.orgSettings = (orgRes && !orgRes.error && orgRes.data) ? orgSettingsFromRow(orgRes.data) : null;
+  /* Admin-only by RLS, so an employee simply gets an empty list and never
+   * sees anyone's prior-year balances. Absent table (pre-014) = empty too. */
+  D.leaveSnapshots = (snapRes && !snapRes.error) ? (snapRes.data || []).map(leaveSnapshotFromRow) : [];
 }
 
 /* The in-memory cache. session holds the logged-in user's UUID. */
-let D = { users: [], entries: [], leaves: [], coas: [], holidays: [], invoices: [], invoiceLineItems: [], orgSettings: null, session: null };
+let D = { users: [], entries: [], leaves: [], coas: [], holidays: [], invoices: [], invoiceLineItems: [], orgSettings: null, leaveSnapshots: [], session: null };
 
 /* ============== TIMEZONE UTILITIES ==============
  * All clock-in/out timestamps are stored as UTC ISO strings (timezone-correct).
@@ -3029,12 +3106,21 @@ function cycleLabel(cycle) {
  * day 130%. These are the fallbacks used when org_settings has not been set up
  * (or migration 013 hasn't been run yet), so invoices always still compute. */
 const DEFAULT_REGULAR_HOLIDAY_MULTIPLIER = 2.0;
+/* Yearly leave entitlement. These match what toggleLeavesEnabled() has
+ * always granted, so they change nothing until an admin edits them. */
+const DEFAULT_VL_ALLOCATION = 12;
+const DEFAULT_SL_ALLOCATION = 5;
+const DEFAULT_EL_ALLOCATION = 5;
 const DEFAULT_SPECIAL_HOLIDAY_MULTIPLIER = 1.3;
 
 function orgSettingsFromRow(r) {
   return {
     regularHolidayMultiplier: Number(r.regular_holiday_multiplier) || DEFAULT_REGULAR_HOLIDAY_MULTIPLIER,
-    specialHolidayMultiplier: Number(r.special_holiday_multiplier) || DEFAULT_SPECIAL_HOLIDAY_MULTIPLIER
+    specialHolidayMultiplier: Number(r.special_holiday_multiplier) || DEFAULT_SPECIAL_HOLIDAY_MULTIPLIER,
+    /* Yearly entitlement the annual reset restores to (migration 015). */
+    defaultVlAllocation: (r.default_vl_allocation ?? DEFAULT_VL_ALLOCATION),
+    defaultSlAllocation: (r.default_sl_allocation ?? DEFAULT_SL_ALLOCATION),
+    defaultElAllocation: (r.default_el_allocation ?? DEFAULT_EL_ALLOCATION)
   };
 }
 
@@ -3043,6 +3129,24 @@ function orgSettingsFromRow(r) {
  * only place that resolution happens - everything else calls this so the
  * precedence can never drift between the builder, the invoice and the
  * employee's own preview. */
+/* The yearly entitlement that applies to ONE employee: their own contract
+ * override when set, otherwise the company default. Mirrors
+ * holidayMultipliers() so the precedence rule is identical everywhere. */
+function leaveAllocations(user) {
+  const org = D.orgSettings || {};
+  const pick = (own, orgVal, fallback) => {
+    const o = (own == null) ? null : Number(own);
+    if (o != null && isFinite(o) && o >= 0) return o;
+    const g = Number(orgVal);
+    return (isFinite(g) && g >= 0) ? g : fallback;
+  };
+  return {
+    vl: pick(user && user.vlAllocation, org.defaultVlAllocation, DEFAULT_VL_ALLOCATION),
+    sl: pick(user && user.slAllocation, org.defaultSlAllocation, DEFAULT_SL_ALLOCATION),
+    el: pick(user && user.elAllocation, org.defaultElAllocation, DEFAULT_EL_ALLOCATION)
+  };
+}
+
 function holidayMultipliers(user) {
   const org = D.orgSettings || {};
   const orgReg = Number(org.regularHolidayMultiplier) || DEFAULT_REGULAR_HOLIDAY_MULTIPLIER;
@@ -5497,6 +5601,145 @@ async function drawDownLeaveBalance(u, type, days) {
   return null;
 }
 
+/* ============== ANNUAL LEAVE RESET (admin) ==============
+ * Closes out a leave year: snapshot every balance into leave_year_snapshots
+ * (admin-only by RLS), then reset each balance to that employee’s yearly
+ * entitlement from leaveAllocations().
+ *
+ * Re-running for the same year is a no-op by design - leave_year_snapshots has
+ * a UNIQUE (user_id, leave_year), so anyone already closed out is skipped
+ * rather than reset a second time. That is the guard against wiping a fresh
+ * year’s balances by clicking twice. */
+function eligibleForLeaveReset() {
+  return D.users.filter(u => u.role === 'employee' && !u.terminatedAt && u.leavesEnabled);
+}
+
+function alreadyClosed(userId, year) {
+  return (D.leaveSnapshots || []).some(s => s.userId === userId && Number(s.leaveYear) === Number(year));
+}
+
+function openAnnualResetModal() {
+  /* Default to closing LAST year - the common case is running this in early
+   * January for the year that just ended. */
+  const yr = Number(today().slice(0, 4)) - 1;
+  document.getElementById('ar-year').value = yr;
+  document.getElementById('ar-reason').value = 'Annual leave reset for ' + yr;
+  renderAnnualResetPreview();
+  document.getElementById('annual-reset-modal').classList.add('active');
+}
+function closeAnnualResetModal() { document.getElementById('annual-reset-modal').classList.remove('active'); }
+
+function renderAnnualResetPreview() {
+  const year = Number(document.getElementById('ar-year').value);
+  const tbody = document.getElementById('ar-rows');
+  const warn = document.getElementById('ar-warning');
+  const staff = eligibleForLeaveReset();
+  const pending = staff.filter(u => !alreadyClosed(u.id, year));
+  const skipped = staff.length - pending.length;
+
+  warn.innerHTML = skipped
+    ? '<div style="font-size:12px; color:#8A6100; background:var(--warn-soft, #FFF6E5); border-left:3px solid #C77700; padding:8px 10px; border-radius:4px; margin-bottom:8px;">' +
+      skipped + ' employee' + (skipped === 1 ? ' has' : 's have') + ' already been closed out for ' + year +
+      ' and will be skipped, so running this again cannot double-reset them.</div>'
+    : '';
+
+  if (!pending.length) {
+    tbody.innerHTML = '<tr><td colspan="4" class="empty">Nothing to reset for ' + year + '.</td></tr>';
+    document.getElementById('ar-run-btn').disabled = true;
+    return;
+  }
+  document.getElementById('ar-run-btn').disabled = false;
+  tbody.innerHTML = pending.map(u => {
+    const a = leaveAllocations(u);
+    const cell = (from, to) => '<span class="mono">' + (from ?? 0) + '</span> <span style="color:var(--ink-muted);">&rarr;</span> <strong class="mono">' + to + '</strong>';
+    return '<tr><td><strong style="color:var(--ink)">' + u.name + '</strong></td>' +
+      '<td>' + cell(u.vlBalance, a.vl) + '</td>' +
+      '<td>' + cell(u.slBalance, a.sl) + '</td>' +
+      '<td>' + cell(u.elBalance, a.el) + '</td></tr>';
+  }).join('');
+}
+
+async function runAnnualLeaveReset() {
+  const year = Number(document.getElementById('ar-year').value);
+  const reason = document.getElementById('ar-reason').value.trim();
+  if (!isFinite(year) || year < 2000) { toast('Enter a valid leave year'); return; }
+  if (!reason) { toast('Give a reason - it is recorded against every employee'); return; }
+
+  const pending = eligibleForLeaveReset().filter(u => !alreadyClosed(u.id, year));
+  if (!pending.length) { toast('Nothing to reset for ' + year); return; }
+
+  const ok = await appConfirm(
+    'Close ' + year + ' for ' + pending.length + ' employee' + (pending.length === 1 ? '' : 's') + '? ' +
+    'Their current balances are saved to history first, then reset to this year\u2019s entitlement.',
+    { title: 'Close leave year ' + year + '?', okLabel: 'Close year & reset' });
+  if (!ok) return;
+
+  const btn = document.getElementById('ar-run-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Resetting\u2026'; }
+
+  /* Snapshot FIRST. If this fails we stop and change nothing - losing the
+   * closing balances would be unrecoverable, whereas a failed reset is not. */
+  const snapshots = pending.map(u => {
+    const a = leaveAllocations(u);
+    return {
+      user_id: u.id, leave_year: year,
+      vl_balance: u.vlBalance ?? 0, sl_balance: u.slBalance ?? 0, el_balance: u.elBalance ?? 0,
+      vl_allocation_applied: a.vl, sl_allocation_applied: a.sl, el_allocation_applied: a.el,
+      snapshot_by: D.session
+    };
+  });
+  let { data: snapRows, error: snapErr } = await sb.from('leave_year_snapshots').insert(snapshots).select();
+  /* vl/sl/el_allocation_applied arrive in migration 015. Without them the
+   * closing balances - the part that is unrecoverable - still get archived;
+   * only the record of which entitlement was applied is skipped. */
+  if (snapErr && /_allocation_applied/i.test(snapErr.message || '')) {
+    const lean = snapshots.map(s => {
+      const c = Object.assign({}, s);
+      delete c.vl_allocation_applied; delete c.sl_allocation_applied; delete c.el_allocation_applied;
+      return c;
+    });
+    ({ data: snapRows, error: snapErr } = await sb.from('leave_year_snapshots').insert(lean).select());
+  }
+  if (snapErr) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Close year & reset'; }
+    toast(/leave_year_snapshots/i.test(snapErr.message || '')
+      ? 'Could not save history - run migration 014 first. Nothing was reset.'
+      : 'Could not save history: ' + snapErr.message + '. Nothing was reset.');
+    return;
+  }
+  (snapRows || []).forEach(r => D.leaveSnapshots.push(leaveSnapshotFromRow(r)));
+
+  /* Then reset, one employee at a time so a mid-way failure is reportable
+   * rather than silent. */
+  const failed = [];
+  const audit = [];
+  for (const u of pending) {
+    const a = leaveAllocations(u);
+    const patch = { vl_balance: a.vl, sl_balance: a.sl, el_balance: a.el };
+    const { error } = await sb.from('profiles').update(patch).eq('id', u.id);
+    if (error) { failed.push(u.name); continue; }
+    audit.push(
+      { user_id: u.id, leave_type: 'Vacation',  old_balance: u.vlBalance ?? 0, new_balance: a.vl, reason, leave_year: year, adjusted_by: D.session },
+      { user_id: u.id, leave_type: 'Sick',      old_balance: u.slBalance ?? 0, new_balance: a.sl, reason, leave_year: year, adjusted_by: D.session },
+      { user_id: u.id, leave_type: 'Emergency', old_balance: u.elBalance ?? 0, new_balance: a.el, reason, leave_year: year, adjusted_by: D.session }
+    );
+    u.vlBalance = a.vl; u.slBalance = a.sl; u.elBalance = a.el;
+  }
+
+  if (audit.length) {
+    const { error: aErr } = await sb.from('leave_balance_adjustments').insert(audit);
+    if (aErr) toast('Balances reset, but the audit record failed: ' + aErr.message);
+  }
+
+  if (btn) { btn.disabled = false; btn.textContent = 'Close year & reset'; }
+  closeAnnualResetModal();
+  toast(failed.length
+    ? 'Reset ' + (pending.length - failed.length) + ' of ' + pending.length + '; failed: ' + failed.join(', ')
+    : 'Closed ' + year + ' and reset ' + pending.length + ' employee' + (pending.length === 1 ? '' : 's'));
+  renderEmployeesTable();
+  renderAdmin();
+}
+
 function openLeaveBalanceModal(uid) {
   const u = D.users.find(x => x.id === uid);
   if (!u) return;
@@ -5507,8 +5750,41 @@ function openLeaveBalanceModal(uid) {
   document.getElementById('lb-el').value = u.elBalance ?? 0;
   document.getElementById('lb-reason').value = '';
   document.getElementById('lb-diff').innerHTML = '';
+  /* Blank input = inherit; placeholder shows what that inherits to. */
+  const alloc = leaveAllocations(u);
+  const seedAlloc = (id, own, effective) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.value = (own == null) ? '' : own;
+    el.placeholder = 'Company: ' + effective;
+  };
+  seedAlloc('lb-vl-alloc', u.vlAllocation, (D.orgSettings && D.orgSettings.defaultVlAllocation) ?? DEFAULT_VL_ALLOCATION);
+  seedAlloc('lb-sl-alloc', u.slAllocation, (D.orgSettings && D.orgSettings.defaultSlAllocation) ?? DEFAULT_SL_ALLOCATION);
+  seedAlloc('lb-el-alloc', u.elAllocation, (D.orgSettings && D.orgSettings.defaultElAllocation) ?? DEFAULT_EL_ALLOCATION);
+  renderLeaveHistoryForEmployee(uid);
   document.getElementById('leave-balance-modal').classList.add('active');
 }
+/* Prior-year closing balances. Rendered only inside this admin modal, and
+ * the rows themselves are admin-only at the database level (RLS on
+ * leave_year_snapshots), so an employee can never see them. */
+function renderLeaveHistoryForEmployee(uid) {
+  const box = document.getElementById('lb-history');
+  if (!box) return;
+  const rows = (D.leaveSnapshots || [])
+    .filter(s => s.userId === uid)
+    .sort((a, b) => b.leaveYear - a.leaveYear);
+  if (!rows.length) {
+    box.innerHTML = '<p style="font-size:11px; color:var(--ink-muted); margin:0;">No previous leave years closed yet.</p>';
+    return;
+  }
+  box.innerHTML =
+    '<label style="font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-muted);">Previous years (admin only)</label>' +
+    '<table style="margin-top:6px;"><thead><tr><th>Year</th><th>VL left</th><th>SL left</th><th>EL left</th></tr></thead><tbody>' +
+    rows.map(s => '<tr><td class="mono">' + s.leaveYear + '</td><td class="mono">' + s.vlBalance +
+      '</td><td class="mono">' + s.slBalance + '</td><td class="mono">' + s.elBalance + '</td></tr>').join('') +
+    '</tbody></table>';
+}
+
 function closeLeaveBalanceModal() { document.getElementById('leave-balance-modal').classList.remove('active'); }
 
 async function saveLeaveBalances() {
@@ -5530,6 +5806,19 @@ async function saveLeaveBalances() {
     }
   }
 
+  /* Entitlement is separate from balance: blank means inherit, so it stores
+   * NULL rather than 0 - a 0 would zero out next year\u2019s reset. */
+  const allocOf = id => {
+    const raw = String((document.getElementById(id) || {}).value || '').trim();
+    if (raw === '') return null;
+    const n = parseFloat(raw);
+    return (isFinite(n) && n >= 0 && n <= 365) ? n : NaN;
+  };
+  const allocs = { vl_allocation: allocOf('lb-vl-alloc'), sl_allocation: allocOf('lb-sl-alloc'), el_allocation: allocOf('lb-el-alloc') };
+  if (Object.values(allocs).some(v => Number.isNaN(v))) {
+    toast('Yearly entitlement must be 0-365 days, or blank to use the company default'); return;
+  }
+
   const patch = {};
   const changes = [];
   for (const t in next) {
@@ -5538,9 +5827,23 @@ async function saveLeaveBalances() {
     const after = round2(next[t]);
     if (before !== after) { patch[map.col] = after; changes.push({ type: t, before, after, label: map.label }); }
   }
-  if (!changes.length) { toast('Nothing changed'); return; }
+  const allocChanged =
+    allocs.vl_allocation !== (u.vlAllocation ?? null) ||
+    allocs.sl_allocation !== (u.slAllocation ?? null) ||
+    allocs.el_allocation !== (u.elAllocation ?? null);
+  if (allocChanged) Object.assign(patch, allocs);
+  if (!changes.length && !allocChanged) { toast('Nothing changed'); return; }
 
   let { error } = await sb.from('profiles').update(patch).eq('id', uid);
+  /* The *_allocation columns arrive in migration 015. If it has not been run,
+   * still save the balances - the entitlement is only needed at year end. */
+  if (error && /_allocation/i.test(error.message || '')) {
+    delete patch.vl_allocation; delete patch.sl_allocation; delete patch.el_allocation;
+    if (Object.keys(patch).length) {
+      ({ error } = await sb.from('profiles').update(patch).eq('id', uid));
+    } else { error = null; }
+    if (!error) toast('Entitlement not saved - run migration 015 to enable yearly allocations');
+  }
   /* el_balance arrives in migration 014 - still save VL/SL if it is missing. */
   if (error && /el_balance/i.test(error.message || '')) {
     delete patch.el_balance;
@@ -5555,6 +5858,7 @@ async function saveLeaveBalances() {
     const map = LEAVE_BALANCE_FIELDS[c.type];
     if (map.col in patch || map.col !== 'el_balance') u[map.app] = c.after;
   });
+  if ('vl_allocation' in patch) { u.vlAllocation = allocs.vl_allocation; u.slAllocation = allocs.sl_allocation; u.elAllocation = allocs.el_allocation; }
 
   /* Audit row per changed type. Best-effort: if migration 014 has not been run
    * the balance change still stands, we just say the trail was not written. */
