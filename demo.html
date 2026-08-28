@@ -287,13 +287,22 @@
   }
   .avatar.owner { background: var(--vc-navy); }
   .container {
-    /* Wide enough for the Employees table (9 columns + a 3-button actions
-     * cell) to lay out without the panel needing to scroll on a normal
-     * desktop. The panel keeps its overflow-x safety net for narrow screens -
+    /* Scales with the screen instead of pinning one width, so the layout feels
+     * the same at 1440, 1720 and 2560 rather than leaving a 2560 monitor with
+     * ~700px of unused margin.
+     *   floor 1800px - never narrower than the width the Employees table needs
+     *                  (9 columns + a 3-button actions cell wants ~1622px plus
+     *                  padding), so this can never reintroduce the old squeeze
+     *   92vw         - tracks the viewport through normal desktop sizes
+     *   cap 2400px   - past this, tables just spread into whitespace
+     * max-width only caps: the element still fills the viewport on small
+     * screens, so the floor can never cause a page-level horizontal scroll.
+     * Side padding tightens on narrow screens to hand a few more pixels back
+     * to the table. The panel keeps its overflow-x safety net regardless -
      * see the .panel comment; removing it clips the action buttons. */
-    max-width: 1800px;
+    max-width: clamp(1800px, 92vw, 2400px);
     margin: 0 auto;
-    padding: 28px 24px;
+    padding: 28px clamp(16px, 1.5vw, 28px);
   }
   .page-header {
     margin-bottom: 24px;
