@@ -2256,6 +2256,22 @@ function holidayFromRow(r) {
     type: (r.holiday_type === 'special') ? 'special' : 'regular'
   };
 }
+/* ---- Migration-013 safety net ----
+ * invoices.special_holiday_hours / _rate arrive in migration 013, and
+ * migrations here are run BY HAND - so a deploy can land before the SQL does.
+ * Rather than break invoicing outright in that window, retry the write without
+ * those two columns. Everything else about the invoice still saves; only the
+ * regular/special holiday SPLIT is lost until the migration is run. */
+function isMissingSpecialHolidayCol(error) {
+  return !!error && /special_holiday_(hours|rate)/i.test(error.message || '');
+}
+function stripSpecialHolidayCols(payload) {
+  const p = Object.assign({}, payload);
+  delete p.special_holiday_hours;
+  delete p.special_holiday_rate;
+  return p;
+}
+
 function invoiceFromRow(r) {
   return {
     id: r.id,
@@ -6943,7 +6959,10 @@ async function saveInvoice() {
         acknowledged_at: approvedUnchanged ? nowIso : null,
         notes: inv.overridden ? 'Hours/rate manually adjusted on revision.' : orig.notes
       };
-      const { error } = await sb.from('invoices').update(patch).eq('id', REVISING_ID);
+      let { error } = await sb.from('invoices').update(patch).eq('id', REVISING_ID);
+      if (isMissingSpecialHolidayCol(error)) {
+        ({ error } = await sb.from('invoices').update(stripSpecialHolidayCols(patch)).eq('id', REVISING_ID));
+      }
       if (error) { toast('Could not save: ' + error.message); return; }
 
       /* Replace this invoice's line items wholesale: delete what's there,
@@ -6980,7 +6999,7 @@ async function saveInvoice() {
   );
   if (dupe && !confirm(`An invoice (#${dupe.invoiceNo}) already exists for ${inv.user.name} covering this exact period. Save another anyway?`)) return;
 
-  const { data, error } = await sb.from('invoices').insert({
+  const invoicePayload = {
     invoice_no: invoiceNo,
     user_id: inv.user.id,
     period_start: inv.start,
@@ -7003,7 +7022,11 @@ async function saveInvoice() {
     workflow: 'draft',
     notes: inv.overridden ? 'Hours/rate manually adjusted at generation.' : null,
     created_by: D.session
-  }).select().single();
+  };
+  let { data, error } = await sb.from('invoices').insert(invoicePayload).select().single();
+  if (isMissingSpecialHolidayCol(error)) {
+    ({ data, error } = await sb.from('invoices').insert(stripSpecialHolidayCols(invoicePayload)).select().single());
+  }
 
   if (error) { toast('Could not save invoice: ' + error.message); return; }
   D.invoices.push(invoiceFromRow(data));
@@ -7706,7 +7729,7 @@ async function submitInvoiceRequest() {
 
   const concern = (document.getElementById('inv-request-concern').value || '').trim() || null;
 
-  const { data, error } = await sb.from('invoices').insert({
+  const invoicePayload = {
     /* Placeholder number — a real sequential one is assigned when the admin
      * approves. Unique (timestamp-based) so the DB's uniqueness index on
      * invoice_no can't collide if two employees request at the same time. */
@@ -7734,7 +7757,11 @@ async function submitInvoiceRequest() {
     requested_by: u.id,
     request_note: concern,
     created_by: u.id
-  }).select().single();
+  };
+  let { data, error } = await sb.from('invoices').insert(invoicePayload).select().single();
+  if (isMissingSpecialHolidayCol(error)) {
+    ({ data, error } = await sb.from('invoices').insert(stripSpecialHolidayCols(invoicePayload)).select().single());
+  }
 
   if (btn) { btn.disabled = false; btn.textContent = 'Submit request'; }
   if (error) { toast('Could not submit request: ' + error.message); return; }
