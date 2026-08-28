@@ -287,7 +287,11 @@
   }
   .avatar.owner { background: var(--vc-navy); }
   .container {
-    max-width: 1240px;
+    /* Wide enough for the Employees table (9 columns + a 3-button actions
+     * cell) to lay out without the panel needing to scroll on a normal
+     * desktop. The panel keeps its overflow-x safety net for narrow screens -
+     * see the .panel comment; removing it clips the action buttons. */
+    max-width: 1800px;
     margin: 0 auto;
     padding: 28px 24px;
   }
