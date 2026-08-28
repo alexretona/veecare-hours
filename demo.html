@@ -886,6 +886,11 @@
           <div class="stat-value"><span id="sl-balance">0</span><span class="unit">days</span></div>
           <div class="stat-meta" id="sl-meta">SL remaining</div>
         </div>
+        <div class="stat" style="--accent: var(--vc-amber, #C77700)">
+          <div class="stat-label">Emergency leave</div>
+          <div class="stat-value"><span id="el-balance">0</span><span class="unit">days</span></div>
+          <div class="stat-meta" id="el-meta">EL remaining</div>
+        </div>
         <div class="stat orange">
           <div class="stat-label">Pending requests</div>
           <div class="stat-value"><span id="pending-count">0</span></div>
@@ -1338,6 +1343,95 @@
           <tbody id="holiday-rows"></tbody>
         </table>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- LEAVE BALANCES (admin) -->
+<div class="modal-backdrop" id="leave-balance-modal">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-header">
+      <div class="modal-title">Leave balances &mdash; <span id="lb-emp-name"></span></div>
+      <button class="modal-close" onclick="closeLeaveBalanceModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="lb-uid">
+      <p style="font-size:12px; color:var(--ink-soft); margin:0 0 14px;">
+        Enter the <strong>remaining</strong> days for each type. Use this to set an
+        opening balance &mdash; for leave already taken inside the app, the balance
+        has been drawn down automatically.
+      </p>
+      <div class="row-2">
+        <div class="field"><label>Vacation (VL)</label><input type="number" id="lb-vl" step="0.5" min="0" max="365"></div>
+        <div class="field"><label>Sick (SL)</label><input type="number" id="lb-sl" step="0.5" min="0" max="365"></div>
+      </div>
+      <div class="field" style="max-width:calc(50% - 7px);">
+        <label>Emergency (EL)</label><input type="number" id="lb-el" step="0.5" min="0" max="365">
+      </div>
+      <div class="field">
+        <label>Reason for the change</label>
+        <input type="text" id="lb-reason" placeholder="e.g. 3 VL taken Feb-May 2026, before the app went live" maxlength="200">
+        <p style="font-size:11px; color:var(--ink-muted); margin-top:4px;">
+          Required. Balances feed payroll, so every manual change is recorded with who changed it and when.
+        </p>
+      </div>
+      <div id="lb-diff" style="font-size:12px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm" onclick="closeLeaveBalanceModal()">Cancel</button>
+      <button class="btn btn-sm" onclick="saveLeaveBalances()">Save balances</button>
+    </div>
+  </div>
+</div>
+
+<!-- RECORD PRE-SYSTEM LEAVE (admin) -->
+<div class="modal-backdrop" id="backfill-leave-modal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-header">
+      <div class="modal-title">Record past leave &mdash; <span id="bf-emp-name"></span></div>
+      <button class="modal-close" onclick="closeBackfillLeaveModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="bf-uid">
+      <p style="font-size:12px; color:var(--ink-soft); margin:0 0 14px;">
+        For leave taken <strong>before the app went live</strong>. It is filed as already
+        approved, appears in the leave history marked <em>Pre-system</em>, and draws
+        down the balance exactly like a normal approved leave.
+      </p>
+      <div class="row-2">
+        <div class="field">
+          <label>Leave type</label>
+          <select id="bf-type">
+            <option value="Vacation">Vacation Leave (VL)</option>
+            <option value="Sick">Sick Leave (SL)</option>
+            <option value="Emergency">Emergency Leave (EL)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Duration</label>
+          <select id="bf-duration" onchange="toggleBackfillHours()">
+            <option value="full">Full day(s)</option>
+            <option value="partial">Partial day (hours)</option>
+          </select>
+        </div>
+      </div>
+      <div class="row-2">
+        <div class="field"><label>From</label><input type="date" id="bf-from" onchange="renderBackfillPreview()"></div>
+        <div class="field"><label>To</label><input type="date" id="bf-to" onchange="renderBackfillPreview()"></div>
+      </div>
+      <div class="field" id="bf-hours-field" style="display:none;">
+        <label>Hours</label>
+        <input type="number" id="bf-hours" step="0.5" min="0.5" max="8" value="4" oninput="renderBackfillPreview()">
+      </div>
+      <div class="field">
+        <label>Note</label>
+        <input type="text" id="bf-note" placeholder="e.g. filed on paper before the app rollout" maxlength="200">
+      </div>
+      <div id="bf-preview" style="font-size:12px;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost btn-sm" onclick="closeBackfillLeaveModal()">Cancel</button>
+      <button class="btn btn-sm" onclick="saveBackfillLeave()">Record leave</button>
     </div>
   </div>
 </div>
@@ -2209,7 +2303,11 @@ const DEMO = true;
 const DB = { profiles: [], time_entries: [], leave_requests: [], coa_requests: [], holidays: [], invoices: [],
   /* Mirrors migration 013's single pinned row so the demo exercises the same
    * read/write path as the real app. */
-  org_settings: [{ id: 1, regular_holiday_multiplier: 2.0, special_holiday_multiplier: 1.3 }] };
+  org_settings: [{ id: 1, regular_holiday_multiplier: 2.0, special_holiday_multiplier: 1.3 }],
+  /* Migration 014 stores. Admin-only in the real app via RLS; here they just
+   * let the demo exercise the same write paths. */
+  leave_balance_adjustments: [],
+  leave_year_snapshots: [] };
 
 let _uid = 0;
 function _newId(prefix) { return prefix + '-' + (++_uid); }
@@ -2344,6 +2442,9 @@ function profileFromRow(r) {
     leavesEnabled: !!r.leaves_enabled,
     vlBalance: r.vl_balance ?? 0,
     slBalance: r.sl_balance ?? 0,
+    /* Emergency Leave got a balance in migration 014. NULL means it was
+     * never configured for this employee, which reads as 0 remaining. */
+    elBalance: r.el_balance ?? 0,
     flexEnabled: !!r.flex_enabled,   /* flexible hours: employee may pause/resume the shift clock */
     timezone: r.timezone || null,    /* IANA zone, e.g. "America/New_York"; null = treat as PHT */
 
@@ -2498,7 +2599,13 @@ function leaveFromRow(r) {
      * 'partial' is always a SINGLE day (from === to) with a specific hour
      * count, e.g. 4 hrs for a half-day sick leave. */
     durationType: r.duration_type || 'full',
-    hours: (r.hours === null || r.hours === undefined) ? null : Number(r.hours)
+    hours: (r.hours === null || r.hours === undefined) ? null : Number(r.hours),
+    /* Leave taken BEFORE the tool went live, entered by an admin after the
+     * fact (migration 014). Counts against the balance like any approved
+     * leave, but is labelled so history never implies it was requested
+     * and approved inside the app. */
+    isBackfill: !!r.is_backfill,
+    backfillNote: r.backfill_note || ''
   };
 }
 
@@ -3716,6 +3823,8 @@ function renderStats() {
     document.getElementById('vl-balance').textContent = u.vlBalance ?? 0;
     document.getElementById('vl-meta').textContent = 'VL remaining';
     document.getElementById('sl-balance').textContent = u.slBalance ?? 0;
+    const elEl = document.getElementById('el-balance');
+    if (elEl) elEl.textContent = u.elBalance ?? 0;
     document.getElementById('sl-meta').textContent = 'SL remaining';
   } else {
     document.getElementById('vl-balance').textContent = '—';
@@ -4851,7 +4960,9 @@ function renderEmployeesTable() {
     } else if (u.employmentStatus !== 'Regular') {
       leavesCell = '<span style="color:var(--ink-muted); font-size:11px;">Regularize first</span>';
     } else if (u.leavesEnabled) {
-      leavesCell = `<span style="color:var(--vc-green); font-size:12px; font-weight:600;">Enabled</span><br><span style="color:var(--ink-muted); font-size:10px;">VL ${u.vlBalance ?? 0} · SL ${u.slBalance ?? 0}</span> <button class="btn btn-ghost btn-sm" style="padding:2px 6px; font-size:10px;" onclick="toggleLeavesEnabled('${u.id}')">Disable</button>`;
+      leavesCell = `<span style="color:var(--vc-green); font-size:12px; font-weight:600;">Enabled</span><br><span style="color:var(--ink-muted); font-size:10px;">VL ${u.vlBalance ?? 0} · SL ${u.slBalance ?? 0} · EL ${u.elBalance ?? 0}</span> <button class="btn btn-ghost btn-sm" style="padding:2px 6px; font-size:10px;" onclick="openLeaveBalanceModal('${u.id}')" title="Set the remaining VL/SL/EL days">Adjust</button>
+<button class="btn btn-ghost btn-sm" style="padding:2px 6px; font-size:10px;" onclick="openBackfillLeaveModal('${u.id}')" title="Record leave taken before the app went live">Past leave</button>
+<button class="btn btn-ghost btn-sm" style="padding:2px 6px; font-size:10px;" onclick="toggleLeavesEnabled('${u.id}')">Disable</button>`;
     } else {
       leavesCell = `<button class="btn btn-sm" onclick="toggleLeavesEnabled('${u.id}')">Enable leaves</button>`;
     }
@@ -5002,14 +5113,26 @@ async function toggleLeavesEnabled(uid) {
   }
   let patch;
   if (u.leavesEnabled) {
-    if (!confirm(`Disable leaves for ${u.name}? Existing balances will be preserved.`)) return;
+    /* appConfirm, never window.confirm - a browser-suppressed dialog
+     * returns false with no prompt (see CLAUDE.md gotcha 3). */
+    const ok = await appConfirm(
+      `Disable leaves for ${u.name}? Existing balances will be preserved.`,
+      { title: 'Disable leaves?', okLabel: 'Disable', danger: true });
+    if (!ok) return;
     patch = { leaves_enabled: false };
   } else {
     const vl = (u.vlBalance == null || u.vlBalance === 0) ? 12 : u.vlBalance;
     const sl = (u.slBalance == null || u.slBalance === 0) ? 5  : u.slBalance;
-    patch = { leaves_enabled: true, vl_balance: vl, sl_balance: sl };
+    const el = (u.elBalance == null || u.elBalance === 0) ? 5  : u.elBalance;
+    patch = { leaves_enabled: true, vl_balance: vl, sl_balance: sl, el_balance: el };
   }
-  const { error } = await sb.from('profiles').update(patch).eq('id', uid);
+  let { error } = await sb.from('profiles').update(patch).eq('id', uid);
+  /* el_balance arrives in migration 014. If that has not been run yet,
+   * still enable leaves rather than blocking the admin outright. */
+  if (error && /el_balance/i.test(error.message || '')) {
+    delete patch.el_balance;
+    ({ error } = await sb.from('profiles').update(patch).eq('id', uid));
+  }
   if (error) { toast('Update failed: ' + error.message); return; }
 
   if (patch.leaves_enabled === false) {
@@ -5018,8 +5141,9 @@ async function toggleLeavesEnabled(uid) {
   } else {
     u.vlBalance = patch.vl_balance;
     u.slBalance = patch.sl_balance;
+    if ('el_balance' in patch) u.elBalance = patch.el_balance;
     u.leavesEnabled = true;
-    toast(`Leaves enabled for ${u.name} (VL ${u.vlBalance}, SL ${u.slBalance})`);
+    toast(`Leaves enabled for ${u.name} (VL ${u.vlBalance}, SL ${u.slBalance}, EL ${u.elBalance ?? 0})`);
   }
   renderEmployeesTable();
 }
@@ -5482,6 +5606,232 @@ function renderApprovals() {
   }).join('');
 }
 
+/* ---- Leave balance administration (migration 014) ----
+ * The app went live mid-year, so balances carried over wrong: staff had
+ * already used VL/SL outside the system. Admins can set an opening balance
+ * here, and record the pre-system leave itself via the backfill modal. */
+
+const LEAVE_BALANCE_FIELDS = {
+  Vacation:  { app: 'vlBalance', col: 'vl_balance', label: 'VL' },
+  Sick:      { app: 'slBalance', col: 'sl_balance', label: 'SL' },
+  Emergency: { app: 'elBalance', col: 'el_balance', label: 'EL' }
+};
+
+/* Draw `days` off one leave balance. Shared by approveLeave() and the
+ * pre-system backfill so the two can never drift apart. Returns an error
+ * object on failure, or null on success. */
+async function drawDownLeaveBalance(u, type, days) {
+  const map = LEAVE_BALANCE_FIELDS[type];
+  if (!u || !map) return null;   /* unknown type draws down nothing */
+  const next = Math.max(0, round2((u[map.app] || 0) - days));
+  const patch = {};
+  patch[map.col] = next;
+  const { error } = await sb.from('profiles').update(patch).eq('id', u.id);
+  if (error) return error;
+  u[map.app] = next;
+  return null;
+}
+
+function openLeaveBalanceModal(uid) {
+  const u = D.users.find(x => x.id === uid);
+  if (!u) return;
+  document.getElementById('lb-uid').value = uid;
+  document.getElementById('lb-emp-name').textContent = u.name;
+  document.getElementById('lb-vl').value = u.vlBalance ?? 0;
+  document.getElementById('lb-sl').value = u.slBalance ?? 0;
+  document.getElementById('lb-el').value = u.elBalance ?? 0;
+  document.getElementById('lb-reason').value = '';
+  document.getElementById('lb-diff').innerHTML = '';
+  document.getElementById('leave-balance-modal').classList.add('active');
+}
+function closeLeaveBalanceModal() { document.getElementById('leave-balance-modal').classList.remove('active'); }
+
+async function saveLeaveBalances() {
+  const uid = document.getElementById('lb-uid').value;
+  const u = D.users.find(x => x.id === uid);
+  if (!u) return;
+  const reason = document.getElementById('lb-reason').value.trim();
+  if (!reason) { toast('Add a reason - balance changes are recorded for payroll'); return; }
+
+  const next = {
+    Vacation:  parseFloat(document.getElementById('lb-vl').value),
+    Sick:      parseFloat(document.getElementById('lb-sl').value),
+    Emergency: parseFloat(document.getElementById('lb-el').value)
+  };
+  for (const t in next) {
+    const v = next[t];
+    if (!isFinite(v) || v < 0 || v > 365) {
+      toast('Balances must be between 0 and 365 days'); return;
+    }
+  }
+
+  const patch = {};
+  const changes = [];
+  for (const t in next) {
+    const map = LEAVE_BALANCE_FIELDS[t];
+    const before = round2(u[map.app] || 0);
+    const after = round2(next[t]);
+    if (before !== after) { patch[map.col] = after; changes.push({ type: t, before, after, label: map.label }); }
+  }
+  if (!changes.length) { toast('Nothing changed'); return; }
+
+  let { error } = await sb.from('profiles').update(patch).eq('id', uid);
+  /* el_balance arrives in migration 014 - still save VL/SL if it is missing. */
+  if (error && /el_balance/i.test(error.message || '')) {
+    delete patch.el_balance;
+    if (Object.keys(patch).length) {
+      ({ error } = await sb.from('profiles').update(patch).eq('id', uid));
+    }
+    if (!error) toast('EL not saved - run migration 014 to enable Emergency Leave balances');
+  }
+  if (error) { toast('Could not save balances: ' + error.message); return; }
+
+  changes.forEach(c => {
+    const map = LEAVE_BALANCE_FIELDS[c.type];
+    if (map.col in patch || map.col !== 'el_balance') u[map.app] = c.after;
+  });
+
+  /* Audit row per changed type. Best-effort: if migration 014 has not been run
+   * the balance change still stands, we just say the trail was not written. */
+  const rows = changes
+    .filter(c => LEAVE_BALANCE_FIELDS[c.type].col in patch)
+    .map(c => ({
+      user_id: uid,
+      leave_type: c.type,
+      old_balance: c.before,
+      new_balance: c.after,
+      reason,
+      adjusted_by: D.session
+    }));
+  if (rows.length) {
+    const { error: aErr } = await sb.from('leave_balance_adjustments').insert(rows);
+    if (aErr) toast('Balances saved, but the audit record failed: ' + aErr.message);
+  }
+
+  closeLeaveBalanceModal();
+  toast(`Balances updated for ${u.name} (${changes.map(c => c.label + ' ' + c.before + ' -> ' + c.after).join(', ')})`);
+  renderEmployeesTable();
+  renderAdmin();
+}
+
+/* ---- Pre-system leave backfill ---- */
+function openBackfillLeaveModal(uid) {
+  const u = D.users.find(x => x.id === uid);
+  if (!u) return;
+  document.getElementById('bf-uid').value = uid;
+  document.getElementById('bf-emp-name').textContent = u.name;
+  document.getElementById('bf-type').value = 'Vacation';
+  document.getElementById('bf-duration').value = 'full';
+  document.getElementById('bf-from').value = '';
+  document.getElementById('bf-to').value = '';
+  document.getElementById('bf-hours').value = 4;
+  document.getElementById('bf-note').value = '';
+  toggleBackfillHours();
+  document.getElementById('backfill-leave-modal').classList.add('active');
+}
+function closeBackfillLeaveModal() { document.getElementById('backfill-leave-modal').classList.remove('active'); }
+
+function toggleBackfillHours() {
+  const partial = document.getElementById('bf-duration').value === 'partial';
+  document.getElementById('bf-hours-field').style.display = partial ? '' : 'none';
+  /* A partial day is always a SINGLE day, matching leaveDayEquivalent(). */
+  document.getElementById('bf-to').disabled = partial;
+  renderBackfillPreview();
+}
+
+function backfillDays() {
+  const partial = document.getElementById('bf-duration').value === 'partial';
+  const from = document.getElementById('bf-from').value;
+  const to = partial ? from : document.getElementById('bf-to').value;
+  if (!from || !to) return null;
+  if (to < from) return NaN;
+  return leaveDayEquivalent({
+    durationType: partial ? 'partial' : 'full',
+    hours: partial ? parseFloat(document.getElementById('bf-hours').value) : null,
+    from, to
+  });
+}
+
+function renderBackfillPreview() {
+  const el = document.getElementById('bf-preview');
+  if (!el) return;
+  const u = D.users.find(x => x.id === document.getElementById('bf-uid').value);
+  const days = backfillDays();
+  if (days === null) { el.innerHTML = ''; return; }
+  if (Number.isNaN(days)) {
+    el.innerHTML = '<span style="color:var(--vc-red);">The end date is before the start date.</span>'; return;
+  }
+  const type = document.getElementById('bf-type').value;
+  const map = LEAVE_BALANCE_FIELDS[type];
+  const before = u ? round2(u[map.app] || 0) : 0;
+  const after = Math.max(0, round2(before - days));
+  const over = days > before;
+  el.innerHTML =
+    '<div style="padding:10px 12px; background:var(--accent-soft); border-left:3px solid ' +
+    (over ? 'var(--vc-red)' : 'var(--vc-green)') + '; border-radius:4px;">' +
+    '<strong>' + round2(days) + ' day' + (days === 1 ? '' : 's') + '</strong> of ' + map.label +
+    ' &mdash; balance ' + before + ' &rarr; ' + after +
+    (over
+      ? '<br><span style="color:var(--vc-red);">That is more than the current balance, so it will stop at 0. Set the opening balance first if this is a mid-year correction.</span>'
+      : '') +
+    '</div>';
+}
+
+async function saveBackfillLeave() {
+  const uid = document.getElementById('bf-uid').value;
+  const u = D.users.find(x => x.id === uid);
+  if (!u) return;
+  const type = document.getElementById('bf-type').value;
+  const partial = document.getElementById('bf-duration').value === 'partial';
+  const from = document.getElementById('bf-from').value;
+  const to = partial ? from : document.getElementById('bf-to').value;
+  const hours = partial ? parseFloat(document.getElementById('bf-hours').value) : null;
+  const note = document.getElementById('bf-note').value.trim();
+
+  if (!from || !to) { toast('Pick the leave dates'); return; }
+  if (to < from) { toast('The end date is before the start date'); return; }
+  if (partial && (!isFinite(hours) || hours <= 0 || hours > 8)) { toast('Partial-day hours must be between 0.5 and 8'); return; }
+  const days = backfillDays();
+  if (!days || Number.isNaN(days) || days <= 0) { toast('That range works out to zero days'); return; }
+
+  const decidedAt = nowISO();
+  const payload = {
+    user_id: uid,
+    type,
+    from_date: from,
+    to_date: to,
+    reason: note || 'Recorded by admin - taken before the app went live',
+    status: 'approved',
+    decided_at: decidedAt,
+    decided_by: D.session,
+    duration_type: partial ? 'partial' : 'full',
+    hours: partial ? hours : null,
+    is_backfill: true,
+    backfill_note: note || null
+  };
+  let { data, error } = await sb.from('leave_requests').insert(payload).select().single();
+  /* is_backfill/backfill_note arrive in migration 014. Without them the leave
+   * still records correctly, it just loses the Pre-system label. */
+  if (error && /is_backfill|backfill_note/i.test(error.message || '')) {
+    delete payload.is_backfill;
+    delete payload.backfill_note;
+    ({ data, error } = await sb.from('leave_requests').insert(payload).select().single());
+    if (!error) toast('Recorded - run migration 014 to label it as pre-system');
+  }
+  if (error) { toast('Could not record the leave: ' + error.message); return; }
+
+  D.leaves.push(leaveFromRow(data));
+  const bErr = await drawDownLeaveBalance(u, type, days);
+  if (bErr) toast('Leave recorded, but the balance did not update: ' + bErr.message);
+
+  closeBackfillLeaveModal();
+  const map = LEAVE_BALANCE_FIELDS[type];
+  toast(`Recorded ${round2(days)} day(s) of ${map.label} for ${u.name} - balance now ${u[map.app]}`);
+  renderEmployeesTable();
+  renderLeaveHistory();
+  renderAdmin();
+}
+
 async function approveLeave(id) {
   const l = D.leaves.find(x => x.id===id);
   if (!l) return;
@@ -5494,19 +5844,10 @@ async function approveLeave(id) {
     .eq('id', id);
   if (error) { toast('Approve failed: ' + error.message); return; }
 
-  let newVl = u ? (u.vlBalance||0) : 0;
-  let newSl = u ? (u.slBalance||0) : 0;
-  if (u && l.type === 'Vacation') {
-    newVl = Math.max(0, newVl - days);
-    const { error: bErr } = await sb.from('profiles').update({ vl_balance: newVl }).eq('id', u.id);
-    if (bErr) { toast('Approved, but balance update failed: ' + bErr.message); }
-    else u.vlBalance = newVl;
-  } else if (u && l.type === 'Sick') {
-    newSl = Math.max(0, newSl - days);
-    const { error: bErr } = await sb.from('profiles').update({ sl_balance: newSl }).eq('id', u.id);
-    if (bErr) { toast('Approved, but balance update failed: ' + bErr.message); }
-    else u.slBalance = newSl;
-  }
+  /* VL, SL and EL all draw down through the same helper the pre-system
+   * backfill uses, so approval and backfill can never diverge. */
+  const bErr = await drawDownLeaveBalance(u, l.type, days);
+  if (bErr) toast('Approved, but balance update failed: ' + bErr.message);
 
   l.status = 'approved';
   l.decidedAt = decidedAt;
@@ -5551,10 +5892,10 @@ function renderLeaveHistory() {
     const decidedDate = l.decidedAt ? fmtDate(l.decidedAt.slice(0,10)) : '—';
     return `<tr>
       <td>${u.name}</td>
-      <td>${l.type}</td>
+      <td>${l.type}${l.isBackfill ? ' <span class="badge" style="font-size:9px;" title="Taken before the app went live; entered by an admin">Pre-system</span>' : ''}</td>
       <td>${fmtDate(l.from)}</td>
       <td>${fmtDate(l.to)}</td>
-      <td class="mono">${daysBetween(l.from, l.to)}</td>
+      <td class="mono">${round2(leaveDayEquivalent(l))}</td>
       <td>${l.reason || '—'}</td>
       <td><span class="badge ${l.status}">${l.status}</span></td>
       <td style="font-size:11px; color:var(--ink-soft);">${decidedDate}<br><span style="color:var(--ink-muted);">by ${decider}</span></td>

@@ -51,18 +51,38 @@ them into the **Supabase SQL editor** manually. There is no migration runner.
 |---|---|
 | `profiles` | Employees + admins. Rate, pay basis, cutoff config, leave balances, termination |
 | `time_entries` | Clock in/out, lunch, pauses. Soft-deleted via `deleted_at` |
-| `leave_requests` | VL/SL. `status` pending/approved/rejected. Full or partial-day |
+| `leave_requests` | VL/SL/EL. `status` pending/approved/rejected. Full or partial-day. `is_backfill` marks pre-system leave |
 | `coa_requests` | Attendance correction requests |
 | `holidays` | Company-wide or per-employee. Paid/unpaid, hours |
 | `invoices` | Invoice snapshots + workflow state |
 | `invoice_line_items` | Allowances / incentives / deductions per invoice |
 | `org_settings` | Single pinned row (`id = 1`). Company-wide holiday multipliers |
+| `leave_balance_adjustments` | Audit of every manual balance edit. **Admin-only (RLS)** |
+| `leave_year_snapshots` | Prior-year balances kept for the annual reset. **Admin-only (RLS)** |
 
 ### Migration history
 `veecare_migration.sql` is the base; then 003–013 in order.
 Notable: 007 termination · 008 line items + request flow · 009 request concern
 note · 010 employee-proposed allowances · 011 leave hours · 012 separate holiday rate
-· 013 holiday multipliers + holiday types.
+· 013 holiday multipliers + holiday types · 014 EL balance, admin balance
+adjustment + audit, pre-system backfill, year snapshots.
+
+### Leave balances
+`vl_balance` / `sl_balance` / `el_balance` on `profiles` hold **remaining days**
+(not the annual allocation). All three draw down through a single helper,
+`drawDownLeaveBalance(user, type, days)` — used by both `approveLeave()` and the
+pre-system backfill, so approval and backfill can never diverge. It clamps at 0
+and is a no-op for an unrecognised type.
+
+The app went live mid-2026, so balances started too high — staff had already
+taken leave outside the system. Two admin tools fix that, both under
+**Employees → Leaves**: *Adjust* sets the remaining days (reason required, every
+change written to `leave_balance_adjustments`), and *Past leave* files the
+pre-system leave itself as an already-approved, `is_backfill`-flagged record so
+it shows in history and draws the balance down normally.
+
+**Not built yet:** the January reset itself. `leave_year_snapshots` is the store
+it will write to; prior-year balances stay admin-only.
 
 ⚠️ Only `013` exists as a file in `migrations/`. Everything before it was never
 handed over — treat the **live Supabase schema as the source of truth**.
