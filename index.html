@@ -8260,6 +8260,7 @@ function continueToRequestPreview() {
     const overridden = EMP_HOURS.regularDirty
       || round2(overtime) !== round2(c.overtimeHours)
       || round2(holiday) !== round2(c.holidayHours)
+      || round2(spcHoliday) !== round2(c.specialHolidayHours)
       || round2(leave) !== round2(c.leaveHours);
     inv = {
       user: u, start: EMP_HOURS.start, end: EMP_HOURS.end,
@@ -8279,7 +8280,7 @@ function continueToRequestPreview() {
       specialHolidayAmount: spcHolAmt,
       regularAmount: regAmt, holidayAmount: holAmt, leaveAmount: leaveAmt,
       lineItems: [],
-      total: round2(regAmt + otAmt + holAmt + leaveAmt),
+      total: round2(regAmt + otAmt + holAmt + spcHolAmt + leaveAmt),
       daysWorked: c.daysWorked,
       overridden
     };
