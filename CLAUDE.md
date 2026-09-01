@@ -51,7 +51,7 @@ them into the **Supabase SQL editor** manually. There is no migration runner.
 |---|---|
 | `profiles` | Employees + admins. Rate, pay basis, cutoff config, leave balances, termination |
 | `time_entries` | Clock in/out, lunch, pauses. Soft-deleted via `deleted_at` |
-| `leave_requests` | VL/SL/EL. `status` pending/approved/rejected. Full or partial-day. `is_backfill` marks pre-system leave. **EL is NOT credited** — only VL/SL draw down a balance (see `LEAVE_BALANCE_FIELDS`) |
+| `leave_requests` | VL/SL/EL. `status` pending/approved/rejected/**cancelled**. Full or partial-day. `excluded_dates` = days the range does not charge. `balance_deducted` = what actually came off. `is_backfill` marks pre-system leave. **EL is NOT credited** — only VL/SL draw down a balance (see `LEAVE_BALANCE_FIELDS`) |
 | `coa_requests` | Attendance correction requests |
 | `holidays` | Company-wide or per-employee. Paid/unpaid, hours |
 | `invoices` | Invoice snapshots + workflow state |
@@ -61,12 +61,13 @@ them into the **Supabase SQL editor** manually. There is no migration runner.
 | `leave_year_snapshots` | Prior-year balances kept for the annual reset. **Admin-only (RLS)** |
 
 ### Migration history
-`veecare_migration.sql` is the base; then 003–016 in order.
+`veecare_migration.sql` is the base; then 003–017 in order.
 Notable: 007 termination · 008 line items + request flow · 009 request concern
 note · 010 employee-proposed allowances · 011 leave hours · 012 separate holiday rate
 · 013 holiday multipliers + holiday types · 014 admin balance adjustment + audit,
 pre-system backfill, year snapshots · 015 yearly leave allocations
-· 016 the 1.5× rest-day holiday, and **removal** of EL credits.
+· 016 the 1.5× rest-day holiday, and **removal** of EL credits · 017 working-day-only
+leave ranges + retraction of approved leave.
 
 ### Leave balances
 `vl_balance` / `sl_balance` on `profiles` hold **remaining days** (not the annual
@@ -82,6 +83,40 @@ taken leave outside the system. Two admin tools fix that, both under
 change written to `leave_balance_adjustments`), and *Past leave* files the
 pre-system leave itself as an already-approved, `is_backfill`-flagged record so
 it shows in history and draws the balance down normally.
+
+### Leave covers WORKING days only (migration 017)
+
+A leave is filed as `from..to`, but the range is not the same as the days it
+charges. Two things take a date back out, both resolved in `leaveCoversDate()`:
+
+- **`excludedDates`** — days the filer un-ticked in the modal. Weekends inside a
+  multi-day range come pre-un-ticked. A **single-day** request is never trimmed:
+  a lone Saturday was filed deliberately by someone who works Saturdays.
+- **A paid holiday** — resolved at read time, never stored, so a holiday declared
+  *after* approval still counts.
+
+`leaveDayEquivalent()`, `getApprovedLeaveOn()` and every day count on screen go
+through that one helper. Do not reduce any of them to a plain `from <= d <= to`
+range check — that was the bug. Filing Fri Sep 4 → Mon Sep 7 charged **4 days**
+and credited **8 leave hours on the Saturday and Sunday**; since paid time off
+consumes the cap, those 16 phantom hours also displaced 16 hours of real worked
+pay. The employee lost twice.
+
+### Retracting leave
+
+| State | Who | What happens |
+|---|---|---|
+| `pending` | the employee | hard-deleted — the admin never acted on it |
+| `approved` | **admin only** | flips to `cancelled`, balance returned, reason required |
+
+An approved leave already moved a balance, so it is kept and flagged rather than
+deleted. Cancelling is **blocked while an invoice covers the dates** — that needs
+an invoice revision, not a quiet balance edit.
+
+⚠️ The refund is always `balance_deducted`, **never a fresh day count**.
+`drawDownLeaveBalance()` clamps at zero, so a clamped deduction took less than
+the dates imply and recomputing would invent credits. That is the whole reason
+the column exists — it returns `{ error, deducted }` for this.
 
 **Annual reset** (Employees → *Annual leave reset*) closes a year: it archives
 every balance into `leave_year_snapshots`, then restores each person to their
@@ -108,6 +143,11 @@ Per-day precedence — do not reorder:
 worked entry  >  approved leave  >  paid holiday  >  unpaid absence
 ```
 A day with an actual time entry never also gets leave/holiday hours credited.
+
+**One exception, added in 017:** a *paid holiday* inside an approved leave range is
+paid as a HOLIDAY, not as leave. Nobody had to work it, so it must not burn a
+leave credit. `leaveCoversDate()` returns false for such a day, which is exactly
+what lets the loop fall through to its holiday branch.
 
 - Full-day leave credits `STANDARD_DAY_HOURS` (8); partial-day credits its stored hours.
 - Hours above the employee's `capHours` become `excessHours` (shown, not billed).
