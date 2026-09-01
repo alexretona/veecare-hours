@@ -899,11 +899,6 @@
           <div class="stat-value"><span id="sl-balance">0</span><span class="unit">days</span></div>
           <div class="stat-meta" id="sl-meta">SL remaining</div>
         </div>
-        <div class="stat" style="--accent: var(--vc-amber, #C77700)">
-          <div class="stat-label">Emergency leave</div>
-          <div class="stat-value"><span id="el-balance">0</span><span class="unit">days</span></div>
-          <div class="stat-meta" id="el-meta">EL remaining</div>
-        </div>
         <div class="stat orange">
           <div class="stat-label">Pending requests</div>
           <div class="stat-value"><span id="pending-count">0</span></div>
@@ -1381,9 +1376,7 @@
         <div class="field"><label>Vacation (VL)</label><input type="number" id="lb-vl" step="0.5" min="0" max="365"></div>
         <div class="field"><label>Sick (SL)</label><input type="number" id="lb-sl" step="0.5" min="0" max="365"></div>
       </div>
-      <div class="field" style="max-width:calc(50% - 7px);">
-        <label>Emergency (EL)</label><input type="number" id="lb-el" step="0.5" min="0" max="365">
-      </div>
+
       <div class="field">
         <label>Reason for the change</label>
         <input type="text" id="lb-reason" placeholder="e.g. 3 VL taken Feb-May 2026, before the app went live" maxlength="200">
@@ -1402,9 +1395,7 @@
           <div class="field"><label>VL / yr</label><input type="number" id="lb-vl-alloc" step="0.5" min="0" max="365"></div>
           <div class="field"><label>SL / yr</label><input type="number" id="lb-sl-alloc" step="0.5" min="0" max="365"></div>
         </div>
-        <div class="field" style="max-width:calc(50% - 7px);">
-          <label>EL / yr</label><input type="number" id="lb-el-alloc" step="0.5" min="0" max="365">
-        </div>
+
       </div>
 
       <div id="lb-history" style="margin-top:14px;"></div>
@@ -1436,7 +1427,7 @@
       <div id="ar-warning"></div>
       <div class="panel" style="overflow-x:auto; margin-top:8px;">
         <table>
-          <thead><tr><th>Employee</th><th>VL</th><th>SL</th><th>EL</th></tr></thead>
+          <thead><tr><th>Employee</th><th>VL</th><th>SL</th></tr></thead>
           <tbody id="ar-rows"></tbody>
         </table>
       </div>
@@ -2513,14 +2504,11 @@ function profileFromRow(r) {
     leavesEnabled: !!r.leaves_enabled,
     vlBalance: r.vl_balance ?? 0,
     slBalance: r.sl_balance ?? 0,
-    /* Emergency Leave got a balance in migration 014. NULL means it was
-     * never configured for this employee, which reads as 0 remaining. */
-    elBalance: r.el_balance ?? 0,
+
     /* Yearly entitlement override (migration 015). NULL = inherit the
      * company default, so raising the company number lifts everyone. */
     vlAllocation: (r.vl_allocation === null || r.vl_allocation === undefined) ? null : Number(r.vl_allocation),
     slAllocation: (r.sl_allocation === null || r.sl_allocation === undefined) ? null : Number(r.sl_allocation),
-    elAllocation: (r.el_allocation === null || r.el_allocation === undefined) ? null : Number(r.el_allocation),
     flexEnabled: !!r.flex_enabled,   /* flexible hours: employee may pause/resume the shift clock */
     timezone: r.timezone || null,    /* IANA zone, e.g. "America/New_York"; null = treat as PHT */
 
@@ -2558,7 +2546,6 @@ function leaveSnapshotFromRow(r) {
     leaveYear: Number(r.leave_year),
     vlBalance: Number(r.vl_balance) || 0,
     slBalance: Number(r.sl_balance) || 0,
-    elBalance: Number(r.el_balance) || 0,
     snapshotAt: r.snapshot_at
   };
 }
@@ -3259,7 +3246,6 @@ const DEFAULT_REGULAR_HOLIDAY_MULTIPLIER = 2.0;
  * always granted, so they change nothing until an admin edits them. */
 const DEFAULT_VL_ALLOCATION = 12;
 const DEFAULT_SL_ALLOCATION = 5;
-const DEFAULT_EL_ALLOCATION = 5;
 const DEFAULT_SPECIAL_HOLIDAY_MULTIPLIER = 1.3;
 
 function orgSettingsFromRow(r) {
@@ -3268,8 +3254,7 @@ function orgSettingsFromRow(r) {
     specialHolidayMultiplier: Number(r.special_holiday_multiplier) || DEFAULT_SPECIAL_HOLIDAY_MULTIPLIER,
     /* Yearly entitlement the annual reset restores to (migration 015). */
     defaultVlAllocation: (r.default_vl_allocation ?? DEFAULT_VL_ALLOCATION),
-    defaultSlAllocation: (r.default_sl_allocation ?? DEFAULT_SL_ALLOCATION),
-    defaultElAllocation: (r.default_el_allocation ?? DEFAULT_EL_ALLOCATION)
+    defaultSlAllocation: (r.default_sl_allocation ?? DEFAULT_SL_ALLOCATION)
   };
 }
 
@@ -3291,8 +3276,7 @@ function leaveAllocations(user) {
   };
   return {
     vl: pick(user && user.vlAllocation, org.defaultVlAllocation, DEFAULT_VL_ALLOCATION),
-    sl: pick(user && user.slAllocation, org.defaultSlAllocation, DEFAULT_SL_ALLOCATION),
-    el: pick(user && user.elAllocation, org.defaultElAllocation, DEFAULT_EL_ALLOCATION)
+    sl: pick(user && user.slAllocation, org.defaultSlAllocation, DEFAULT_SL_ALLOCATION)
   };
 }
 
@@ -3941,8 +3925,7 @@ function renderStats() {
     document.getElementById('vl-balance').textContent = u.vlBalance ?? 0;
     document.getElementById('vl-meta').textContent = 'VL remaining';
     document.getElementById('sl-balance').textContent = u.slBalance ?? 0;
-    const elEl = document.getElementById('el-balance');
-    if (elEl) elEl.textContent = u.elBalance ?? 0;
+
     document.getElementById('sl-meta').textContent = 'SL remaining';
   } else {
     document.getElementById('vl-balance').textContent = '—';
@@ -5078,7 +5061,7 @@ function renderEmployeesTable() {
     } else if (u.employmentStatus !== 'Regular') {
       leavesCell = '<span style="color:var(--ink-muted); font-size:11px;">Regularize first</span>';
     } else if (u.leavesEnabled) {
-      leavesCell = `<span style="color:var(--vc-green); font-size:12px; font-weight:600;">Enabled</span><br><span style="color:var(--ink-muted); font-size:10px;">VL ${u.vlBalance ?? 0} · SL ${u.slBalance ?? 0} · EL ${u.elBalance ?? 0}</span> <button class="btn btn-ghost btn-sm" style="padding:2px 6px; font-size:10px;" onclick="openLeaveBalanceModal('${u.id}')" title="Set the remaining VL/SL/EL days">Adjust</button>
+      leavesCell = `<span style="color:var(--vc-green); font-size:12px; font-weight:600;">Enabled</span><br><span style="color:var(--ink-muted); font-size:10px;">VL ${u.vlBalance ?? 0} · SL ${u.slBalance ?? 0}</span> <button class="btn btn-ghost btn-sm" style="padding:2px 6px; font-size:10px;" onclick="openLeaveBalanceModal('${u.id}')" title="Set the remaining VL/SL days">Adjust</button>
 <button class="btn btn-ghost btn-sm" style="padding:2px 6px; font-size:10px;" onclick="openBackfillLeaveModal('${u.id}')" title="Record leave taken before the app went live">Past leave</button>
 <button class="btn btn-ghost btn-sm" style="padding:2px 6px; font-size:10px;" onclick="toggleLeavesEnabled('${u.id}')">Disable</button>`;
     } else {
@@ -5241,16 +5224,9 @@ async function toggleLeavesEnabled(uid) {
   } else {
     const vl = (u.vlBalance == null || u.vlBalance === 0) ? 12 : u.vlBalance;
     const sl = (u.slBalance == null || u.slBalance === 0) ? 5  : u.slBalance;
-    const el = (u.elBalance == null || u.elBalance === 0) ? 5  : u.elBalance;
-    patch = { leaves_enabled: true, vl_balance: vl, sl_balance: sl, el_balance: el };
+    patch = { leaves_enabled: true, vl_balance: vl, sl_balance: sl };
   }
-  let { error } = await sb.from('profiles').update(patch).eq('id', uid);
-  /* el_balance arrives in migration 014. If that has not been run yet,
-   * still enable leaves rather than blocking the admin outright. */
-  if (error && /el_balance/i.test(error.message || '')) {
-    delete patch.el_balance;
-    ({ error } = await sb.from('profiles').update(patch).eq('id', uid));
-  }
+  const { error } = await sb.from('profiles').update(patch).eq('id', uid);
   if (error) { toast('Update failed: ' + error.message); return; }
 
   if (patch.leaves_enabled === false) {
@@ -5259,9 +5235,8 @@ async function toggleLeavesEnabled(uid) {
   } else {
     u.vlBalance = patch.vl_balance;
     u.slBalance = patch.sl_balance;
-    if ('el_balance' in patch) u.elBalance = patch.el_balance;
     u.leavesEnabled = true;
-    toast(`Leaves enabled for ${u.name} (VL ${u.vlBalance}, SL ${u.slBalance}, EL ${u.elBalance ?? 0})`);
+    toast(`Leaves enabled for ${u.name} (VL ${u.vlBalance}, SL ${u.slBalance})`);
   }
   renderEmployeesTable();
 }
@@ -5729,10 +5704,14 @@ function renderApprovals() {
  * already used VL/SL outside the system. Admins can set an opening balance
  * here, and record the pre-system leave itself via the backfill modal. */
 
+/* Only these types draw down a balance. Emergency Leave is deliberately
+ * absent: the stakeholder decided EL is not credited, so it is filed and
+ * approved like any other leave but deducts nothing. drawDownLeaveBalance()
+ * already no-ops on a type it does not recognise, which is what makes
+ * removing it here sufficient rather than needing a special case. */
 const LEAVE_BALANCE_FIELDS = {
   Vacation:  { app: 'vlBalance', col: 'vl_balance', label: 'VL' },
-  Sick:      { app: 'slBalance', col: 'sl_balance', label: 'SL' },
-  Emergency: { app: 'elBalance', col: 'el_balance', label: 'EL' }
+  Sick:      { app: 'slBalance', col: 'sl_balance', label: 'SL' }
 };
 
 /* Draw `days` off one leave balance. Shared by approveLeave() and the
@@ -5793,7 +5772,7 @@ function renderAnnualResetPreview() {
     : '';
 
   if (!pending.length) {
-    tbody.innerHTML = '<tr><td colspan="4" class="empty">Nothing to reset for ' + year + '.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="3" class="empty">Nothing to reset for ' + year + '.</td></tr>';
     document.getElementById('ar-run-btn').disabled = true;
     return;
   }
@@ -5803,8 +5782,7 @@ function renderAnnualResetPreview() {
     const cell = (from, to) => '<span class="mono">' + (from ?? 0) + '</span> <span style="color:var(--ink-muted);">&rarr;</span> <strong class="mono">' + to + '</strong>';
     return '<tr><td><strong style="color:var(--ink)">' + u.name + '</strong></td>' +
       '<td>' + cell(u.vlBalance, a.vl) + '</td>' +
-      '<td>' + cell(u.slBalance, a.sl) + '</td>' +
-      '<td>' + cell(u.elBalance, a.el) + '</td></tr>';
+      '<td>' + cell(u.slBalance, a.sl) + '</td></tr>';
   }).join('');
 }
 
@@ -5832,19 +5810,19 @@ async function runAnnualLeaveReset() {
     const a = leaveAllocations(u);
     return {
       user_id: u.id, leave_year: year,
-      vl_balance: u.vlBalance ?? 0, sl_balance: u.slBalance ?? 0, el_balance: u.elBalance ?? 0,
-      vl_allocation_applied: a.vl, sl_allocation_applied: a.sl, el_allocation_applied: a.el,
+      vl_balance: u.vlBalance ?? 0, sl_balance: u.slBalance ?? 0,
+      vl_allocation_applied: a.vl, sl_allocation_applied: a.sl,
       snapshot_by: D.session
     };
   });
   let { data: snapRows, error: snapErr } = await sb.from('leave_year_snapshots').insert(snapshots).select();
-  /* vl/sl/el_allocation_applied arrive in migration 015. Without them the
+  /* vl/sl_allocation_applied arrive in migration 015. Without them the
    * closing balances - the part that is unrecoverable - still get archived;
    * only the record of which entitlement was applied is skipped. */
   if (snapErr && /_allocation_applied/i.test(snapErr.message || '')) {
     const lean = snapshots.map(s => {
       const c = Object.assign({}, s);
-      delete c.vl_allocation_applied; delete c.sl_allocation_applied; delete c.el_allocation_applied;
+      delete c.vl_allocation_applied; delete c.sl_allocation_applied;
       return c;
     });
     ({ data: snapRows, error: snapErr } = await sb.from('leave_year_snapshots').insert(lean).select());
@@ -5864,15 +5842,14 @@ async function runAnnualLeaveReset() {
   const audit = [];
   for (const u of pending) {
     const a = leaveAllocations(u);
-    const patch = { vl_balance: a.vl, sl_balance: a.sl, el_balance: a.el };
+    const patch = { vl_balance: a.vl, sl_balance: a.sl };
     const { error } = await sb.from('profiles').update(patch).eq('id', u.id);
     if (error) { failed.push(u.name); continue; }
     audit.push(
       { user_id: u.id, leave_type: 'Vacation',  old_balance: u.vlBalance ?? 0, new_balance: a.vl, reason, leave_year: year, adjusted_by: D.session },
-      { user_id: u.id, leave_type: 'Sick',      old_balance: u.slBalance ?? 0, new_balance: a.sl, reason, leave_year: year, adjusted_by: D.session },
-      { user_id: u.id, leave_type: 'Emergency', old_balance: u.elBalance ?? 0, new_balance: a.el, reason, leave_year: year, adjusted_by: D.session }
+      { user_id: u.id, leave_type: 'Sick',      old_balance: u.slBalance ?? 0, new_balance: a.sl, reason, leave_year: year, adjusted_by: D.session }
     );
-    u.vlBalance = a.vl; u.slBalance = a.sl; u.elBalance = a.el;
+    u.vlBalance = a.vl; u.slBalance = a.sl;
   }
 
   if (audit.length) {
@@ -5896,7 +5873,6 @@ function openLeaveBalanceModal(uid) {
   document.getElementById('lb-emp-name').textContent = u.name;
   document.getElementById('lb-vl').value = u.vlBalance ?? 0;
   document.getElementById('lb-sl').value = u.slBalance ?? 0;
-  document.getElementById('lb-el').value = u.elBalance ?? 0;
   document.getElementById('lb-reason').value = '';
   document.getElementById('lb-diff').innerHTML = '';
   /* Blank input = inherit; placeholder shows what that inherits to. */
@@ -5909,7 +5885,6 @@ function openLeaveBalanceModal(uid) {
   };
   seedAlloc('lb-vl-alloc', u.vlAllocation, (D.orgSettings && D.orgSettings.defaultVlAllocation) ?? DEFAULT_VL_ALLOCATION);
   seedAlloc('lb-sl-alloc', u.slAllocation, (D.orgSettings && D.orgSettings.defaultSlAllocation) ?? DEFAULT_SL_ALLOCATION);
-  seedAlloc('lb-el-alloc', u.elAllocation, (D.orgSettings && D.orgSettings.defaultElAllocation) ?? DEFAULT_EL_ALLOCATION);
   renderLeaveHistoryForEmployee(uid);
   document.getElementById('leave-balance-modal').classList.add('active');
 }
@@ -5928,9 +5903,9 @@ function renderLeaveHistoryForEmployee(uid) {
   }
   box.innerHTML =
     '<label style="font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-muted);">Previous years (admin only)</label>' +
-    '<table style="margin-top:6px;"><thead><tr><th>Year</th><th>VL left</th><th>SL left</th><th>EL left</th></tr></thead><tbody>' +
+    '<table style="margin-top:6px;"><thead><tr><th>Year</th><th>VL left</th><th>SL left</th></tr></thead><tbody>' +
     rows.map(s => '<tr><td class="mono">' + s.leaveYear + '</td><td class="mono">' + s.vlBalance +
-      '</td><td class="mono">' + s.slBalance + '</td><td class="mono">' + s.elBalance + '</td></tr>').join('') +
+      '</td><td class="mono">' + s.slBalance + '</td></tr>').join('') +
     '</tbody></table>';
 }
 
@@ -5945,8 +5920,7 @@ async function saveLeaveBalances() {
 
   const next = {
     Vacation:  parseFloat(document.getElementById('lb-vl').value),
-    Sick:      parseFloat(document.getElementById('lb-sl').value),
-    Emergency: parseFloat(document.getElementById('lb-el').value)
+    Sick:      parseFloat(document.getElementById('lb-sl').value)
   };
   for (const t in next) {
     const v = next[t];
@@ -5963,7 +5937,7 @@ async function saveLeaveBalances() {
     const n = parseFloat(raw);
     return (isFinite(n) && n >= 0 && n <= 365) ? n : NaN;
   };
-  const allocs = { vl_allocation: allocOf('lb-vl-alloc'), sl_allocation: allocOf('lb-sl-alloc'), el_allocation: allocOf('lb-el-alloc') };
+  const allocs = { vl_allocation: allocOf('lb-vl-alloc'), sl_allocation: allocOf('lb-sl-alloc') };
   if (Object.values(allocs).some(v => Number.isNaN(v))) {
     toast('Yearly entitlement must be 0-365 days, or blank to use the company default'); return;
   }
@@ -5978,8 +5952,7 @@ async function saveLeaveBalances() {
   }
   const allocChanged =
     allocs.vl_allocation !== (u.vlAllocation ?? null) ||
-    allocs.sl_allocation !== (u.slAllocation ?? null) ||
-    allocs.el_allocation !== (u.elAllocation ?? null);
+    allocs.sl_allocation !== (u.slAllocation ?? null);
   if (allocChanged) Object.assign(patch, allocs);
   if (!changes.length && !allocChanged) { toast('Nothing changed'); return; }
 
@@ -5987,27 +5960,20 @@ async function saveLeaveBalances() {
   /* The *_allocation columns arrive in migration 015. If it has not been run,
    * still save the balances - the entitlement is only needed at year end. */
   if (error && /_allocation/i.test(error.message || '')) {
-    delete patch.vl_allocation; delete patch.sl_allocation; delete patch.el_allocation;
+    delete patch.vl_allocation; delete patch.sl_allocation;
     if (Object.keys(patch).length) {
       ({ error } = await sb.from('profiles').update(patch).eq('id', uid));
     } else { error = null; }
     if (!error) toast('Entitlement not saved - run migration 015 to enable yearly allocations');
   }
-  /* el_balance arrives in migration 014 - still save VL/SL if it is missing. */
-  if (error && /el_balance/i.test(error.message || '')) {
-    delete patch.el_balance;
-    if (Object.keys(patch).length) {
-      ({ error } = await sb.from('profiles').update(patch).eq('id', uid));
-    }
-    if (!error) toast('EL not saved - run migration 014 to enable Emergency Leave balances');
-  }
+
   if (error) { toast('Could not save balances: ' + error.message); return; }
 
   changes.forEach(c => {
     const map = LEAVE_BALANCE_FIELDS[c.type];
-    if (map.col in patch || map.col !== 'el_balance') u[map.app] = c.after;
+    u[map.app] = c.after;
   });
-  if ('vl_allocation' in patch) { u.vlAllocation = allocs.vl_allocation; u.slAllocation = allocs.sl_allocation; u.elAllocation = allocs.el_allocation; }
+  if ('vl_allocation' in patch) { u.vlAllocation = allocs.vl_allocation; u.slAllocation = allocs.sl_allocation; }
 
   /* Audit row per changed type. Best-effort: if migration 014 has not been run
    * the balance change still stands, we just say the trail was not written. */
@@ -6081,6 +6047,14 @@ function renderBackfillPreview() {
   }
   const type = document.getElementById('bf-type').value;
   const map = LEAVE_BALANCE_FIELDS[type];
+  /* Untracked type (Emergency Leave): record the dates, but there is no
+   * balance to move, so say that plainly instead of implying one. */
+  if (!map) {
+    el.innerHTML = '<div style="padding:10px 12px; background:var(--accent-soft); border-left:3px solid var(--vc-green); border-radius:4px;">' +
+      '<strong>' + round2(days) + ' day' + (days === 1 ? '' : 's') + '</strong> of ' + type +
+      ' leave will be recorded. This type is not credited, so no balance changes.</div>';
+    return;
+  }
   const before = u ? round2(u[map.app] || 0) : 0;
   const after = Math.max(0, round2(before - days));
   const over = days > before;
@@ -6144,7 +6118,9 @@ async function saveBackfillLeave() {
 
   closeBackfillLeaveModal();
   const map = LEAVE_BALANCE_FIELDS[type];
-  toast(`Recorded ${round2(days)} day(s) of ${map.label} for ${u.name} - balance now ${u[map.app]}`);
+  toast(map
+    ? `Recorded ${round2(days)} day(s) of ${map.label} for ${u.name} - balance now ${u[map.app]}`
+    : `Recorded ${round2(days)} day(s) of ${type} leave for ${u.name} - this type is not credited`);
   renderEmployeesTable();
   renderLeaveHistory();
   renderAdmin();
@@ -8629,8 +8605,12 @@ function renderEmpInvoices() {
     } else {
       actions = `<button class="btn btn-ghost btn-sm" onclick="viewInvoice('${i.id}')">View / download</button>`;
       if (i.workflow === 'sent') {
-        actions += `<button class="btn btn-sm" onclick="acknowledgeInvoice('${i.id}')" title="Confirm this invoice is correct">Acknowledge</button>
-                    <button class="btn btn-danger btn-sm" onclick="openDisputeModal('${i.id}')">Dispute</button>`;
+        /* Acknowledging has never gated the download - say so, because
+         * people were holding invoices back waiting for a sign-off that
+         * was never blocking them. */
+        actions += `<button class="btn btn-sm" onclick="acknowledgeInvoice('${i.id}')" title="Confirm this invoice is correct. You can download it now either way.">Acknowledge</button>
+                    <button class="btn btn-danger btn-sm" onclick="openDisputeModal('${i.id}')">Dispute</button>
+                    <span style="font-size:10px; color:var(--ink-muted); white-space:nowrap;">Downloadable now</span>`;
       } else if (i.workflow === 'disputed') {
         actions += `<span class="badge absent" style="font-size:9px;" title="${(i.disputeReason||'').replace(/"/g,'&quot;')}">Awaiting revision</span>`;
       }
