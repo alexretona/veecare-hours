@@ -51,7 +51,7 @@ them into the **Supabase SQL editor** manually. There is no migration runner.
 |---|---|
 | `profiles` | Employees + admins. Rate, pay basis, cutoff config, leave balances, termination |
 | `time_entries` | Clock in/out, lunch, pauses. Soft-deleted via `deleted_at` |
-| `leave_requests` | VL/SL/EL. `status` pending/approved/rejected. Full or partial-day. `is_backfill` marks pre-system leave |
+| `leave_requests` | VL/SL/EL. `status` pending/approved/rejected. Full or partial-day. `is_backfill` marks pre-system leave. **EL is NOT credited** — only VL/SL draw down a balance (see `LEAVE_BALANCE_FIELDS`) |
 | `coa_requests` | Attendance correction requests |
 | `holidays` | Company-wide or per-employee. Paid/unpaid, hours |
 | `invoices` | Invoice snapshots + workflow state |
@@ -61,15 +61,17 @@ them into the **Supabase SQL editor** manually. There is no migration runner.
 | `leave_year_snapshots` | Prior-year balances kept for the annual reset. **Admin-only (RLS)** |
 
 ### Migration history
-`veecare_migration.sql` is the base; then 003–013 in order.
+`veecare_migration.sql` is the base; then 003–016 in order.
 Notable: 007 termination · 008 line items + request flow · 009 request concern
 note · 010 employee-proposed allowances · 011 leave hours · 012 separate holiday rate
-· 013 holiday multipliers + holiday types · 014 EL balance, admin balance
-adjustment + audit, pre-system backfill, year snapshots.
+· 013 holiday multipliers + holiday types · 014 admin balance adjustment + audit,
+pre-system backfill, year snapshots · 015 yearly leave allocations
+· 016 the 1.5× rest-day holiday, and **removal** of EL credits.
 
 ### Leave balances
-`vl_balance` / `sl_balance` / `el_balance` on `profiles` hold **remaining days**
-(not the annual allocation). All three draw down through a single helper,
+`vl_balance` / `sl_balance` on `profiles` hold **remaining days** (not the annual
+allocation). Emergency Leave has no balance at all — see below. Both draw down
+through a single helper,
 `drawDownLeaveBalance(user, type, days)` — used by both `approveLeave()` and the
 pre-system backfill, so approval and backfill can never diverge. It clamps at 0
 and is a no-op for an unrecognised type.
@@ -81,11 +83,17 @@ change written to `leave_balance_adjustments`), and *Past leave* files the
 pre-system leave itself as an already-approved, `is_backfill`-flagged record so
 it shows in history and draws the balance down normally.
 
-**Not built yet:** the January reset itself. `leave_year_snapshots` is the store
-it will write to; prior-year balances stay admin-only.
+**Annual reset** (Employees → *Annual leave reset*) closes a year: it archives
+every balance into `leave_year_snapshots`, then restores each person to their
+yearly entitlement from `leaveAllocations()` (company default in `org_settings`,
+per-employee override on `profiles`, NULL = inherit). The snapshot is written
+FIRST and aborts the run on failure — losing closing balances is unrecoverable.
+Re-running the same year is a no-op via UNIQUE (user_id, leave_year).
+Prior-year balances render only in the admin balance modal and are admin-only
+at the database level.
 
-⚠️ Only `013` exists as a file in `migrations/`. Everything before it was never
-handed over — treat the **live Supabase schema as the source of truth**.
+⚠️ Only `013`–`016` exist as files in `migrations/`. Everything before them was
+never handed over — treat the **live Supabase schema as the source of truth**.
 
 ---
 
@@ -108,7 +116,7 @@ A day with an actual time entry never also gets leave/holiday hours credited.
 of the cutoff's approved hours, not on top of them:
 
 ```
-paidTimeOff = leaveHours + holidayHours
+paidTimeOff = leaveHours + holidayHours + specialHolidayHours + restDayHolidayHours
 billable    = min(worked, capHours - paidTimeOff)
 excess      = max(0, worked - (capHours - paidTimeOff))
 ```
@@ -134,17 +142,22 @@ trimming them would misstate it. Only the room left for *worked* hours shrinks.
   |---|---|---|
   | Regular holiday | `regular` | 2.0× |
   | Special non-working day | `special` | 1.3× |
+  | Special day on a rest day | `special_rest_day` | 1.5× |
 
   Resolution order, implemented **only** in `holidayMultipliers(user)` — never
-  duplicate it: the employee's own `profiles.regular_holiday_multiplier` /
-  `special_holiday_multiplier` (NULL = inherit) → `org_settings` → the statutory
-  constants. A per-person override is how a contractor gets e.g. 1.5×.
+  duplicate it: the employee's own `profiles.*_holiday_multiplier` (NULL =
+  inherit) → `org_settings` → the statutory constants. Per-person overrides
+  remain on top of the three standard types.
 
-  `computeInvoice` returns both buckets (`holidayHours` / `specialHolidayHours`)
-  with `holidayRate` / `specialHolidayRate` already multiplied out, and the
-  invoice prints them as **separate rows** so each rate is auditable. The row is
-  only labelled "REGULAR HOLIDAY" once a special bucket exists, so older
-  invoices keep their original wording.
+  `computeInvoice` returns all three buckets (`holidayHours` /
+  `specialHolidayHours` / `restDayHolidayHours`) with their rates already
+  multiplied out, and the invoice prints them as **separate rows** so each rate
+  is auditable. The first row is only labelled "REGULAR HOLIDAY" once another
+  bucket exists, so older invoices keep their original wording.
+
+  `approvedUnchanged` must compare **every** bucket. It once checked only the
+  regular pair, so an admin editing just the special figures got a silent
+  auto-complete the employee never saw.
 
   HR sets the company rates under **Holidays → Company holiday rates** and
   per-person overrides under **Employees → Edit pay**. Nothing about holiday pay
@@ -239,3 +252,15 @@ employee requests → admin reviews → approves → employee sees result.
 - Flag assumptions rather than silently guessing.
 - Reproduce a reported bug before fixing it, then verify the fix against that repro.
 - Communication is a mix of English and Filipino/Tagalog.
+
+### Emergency Leave is deliberately uncredited
+
+`LEAVE_BALANCE_FIELDS` lists only `Vacation` and `Sick`. Emergency Leave is
+filed and approved like any other leave but **deducts nothing** —
+`drawDownLeaveBalance()` no-ops on any type missing from that map, which is what
+makes the omission sufficient rather than needing a special case.
+
+This reversed an earlier decision (EL used to carry a 5-day balance); migration
+016 dropped `el_balance` / `el_allocation`. **Don't re-add EL to that map**
+without the owner asking for it. Historical `Emergency` rows in
+`leave_balance_adjustments` are kept on purpose and stay readable.
