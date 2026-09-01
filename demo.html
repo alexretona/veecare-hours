@@ -769,12 +769,43 @@
         <input type="password" id="login-pass" placeholder="••••••••">
       </div>
       <button class="btn btn-full" id="login-btn" onclick="handleLogin()">Sign in</button>
+      <p class="login-switch"><a onclick="showForgot()">Forgot your password?</a></p>
       <p class="login-switch">No account yet? <a onclick="showSignup()">Create one</a></p>
       <div class="demo-creds">
         Sign in with your work email and password. New team members can
         create an account, which the owner reviews and activates.
       </div>
       <div style="text-align:right; margin-top:16px; font-size:9px; color:var(--ink-muted); letter-spacing:0.08em; text-transform:uppercase;">v1.0</div>
+    </div>
+
+    <!-- FORGOT PASSWORD: request a reset link -->
+    <div id="forgot-panel" style="display:none;">
+      <h1 class="login-title">Reset your password</h1>
+      <p class="login-sub">We&rsquo;ll email you a link to set a new one.</p>
+      <div class="field">
+        <label>Work email</label>
+        <input type="email" id="fp-email" placeholder="you@veecarestaffingsolutions.com" autocomplete="username">
+      </div>
+      <div id="fp-msg" style="font-size:12px; margin-bottom:12px;"></div>
+      <button class="btn btn-full" id="fp-send-btn" onclick="sendPasswordReset()">Send reset link</button>
+      <p class="login-switch"><a onclick="showSignin()">&larr; Back to sign in</a></p>
+    </div>
+
+    <!-- FORGOT PASSWORD: choose the new password (reached from the emailed link) -->
+    <div id="reset-panel" style="display:none;">
+      <h1 class="login-title">Choose a new password</h1>
+      <p class="login-sub">You followed a reset link. Set a new password to continue.</p>
+      <div class="field">
+        <label>New password</label>
+        <input type="password" id="rp-pass" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" autocomplete="new-password">
+      </div>
+      <div class="field">
+        <label>Confirm new password</label>
+        <input type="password" id="rp-confirm" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" autocomplete="new-password">
+      </div>
+      <div id="rp-msg" style="font-size:12px; margin-bottom:12px;"></div>
+      <button class="btn btn-full" id="rp-save-btn" onclick="submitNewPassword()">Update password</button>
+      <p class="login-switch"><a onclick="cancelPasswordReset()">Cancel</a></p>
     </div>
 
     <div id="signup-panel" style="display:none;">
@@ -2466,11 +2497,18 @@ function mockFrom(table) {
  * tried out (including the wrong-current-password path). Resets on reload. */
 let DEMO_PASSWORD = 'demo1234';
 
+/* The demo has no real auth, so this is always false - it exists so the login
+ * panel logic matches index.html rather than diverging. */
+const IS_PASSWORD_RECOVERY = false;
+
 const sb = {
   from: mockFrom,
   auth: {
     getSession: async () => ({ data: { session: null } }),
     signOut: async () => ({ error: null }),
+    /* No mail in the demo; resolve so the Forgot-password panel exercises the
+     * same code path and shows the same neutral confirmation as the real app. */
+    resetPasswordForEmail: async () => ({ data: {}, error: null }),
     getUser: async () => {
       const u = D.users.find(x => x.id === D.session);
       return { data: { user: { email: (u && u.username) || 'demo@veecarestaffingsolutions.com' } }, error: null };
@@ -3429,8 +3467,103 @@ function toast(msg) {
 /* Data is hydrated from Supabase on login/boot — no synchronous load here. */
 
 /* ============== AUTH ============== */
-function showSignup() { document.getElementById('signin-panel').style.display='none'; document.getElementById('signup-panel').style.display='block'; }
-function showSignin() { document.getElementById('signup-panel').style.display='none'; document.getElementById('signin-panel').style.display='block'; }
+/* One switch for every login-card panel, so a new panel can never be left
+ * showing underneath another one. */
+function showLoginPanel(which) {
+  ['signin', 'signup', 'forgot', 'reset'].forEach(p => {
+    const el = document.getElementById(p + '-panel');
+    if (el) el.style.display = (p === which) ? 'block' : 'none';
+  });
+}
+function showSignup() { showLoginPanel('signup'); }
+function showSignin() { showLoginPanel('signin'); }
+function showForgot() {
+  const typed = (document.getElementById('login-user').value || '').trim();
+  document.getElementById('fp-email').value = typed;
+  setLoginMsg('fp-msg', '');
+  showLoginPanel('forgot');
+}
+function showResetPanel() {
+  document.getElementById('rp-pass').value = '';
+  document.getElementById('rp-confirm').value = '';
+  setLoginMsg('rp-msg', '');
+  showLoginPanel('reset');
+}
+
+function setLoginMsg(id, text, isError) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = text || '';
+  el.style.color = isError ? 'var(--vc-red)' : 'var(--ink-soft)';
+}
+
+/* Email a reset link. Deliberately reports the SAME outcome whether or not
+ * the address has an account: telling an anonymous visitor which emails are
+ * registered is account enumeration. Supabase behaves the same way, so the
+ * only thing that could leak the difference is us. */
+async function sendPasswordReset() {
+  const email = (document.getElementById('fp-email').value || '').trim().toLowerCase();
+  if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    setLoginMsg('fp-msg', 'Enter your work email address.', true); return;
+  }
+  const btn = document.getElementById('fp-send-btn');
+  btn.disabled = true; btn.textContent = 'Sending\u2026';
+  setLoginMsg('fp-msg', '');
+  try {
+    /* Send them back to this same page; the link arrives with a recovery
+     * token that the boot below turns into the "choose a new password" step. */
+    await sb.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + window.location.pathname
+    });
+  } catch (e) { /* fall through to the same message */ }
+  setLoginMsg('fp-msg', 'If that email has a VeeCare account, a reset link is on its way. Check your inbox and spam folder - the link expires in 1 hour.');
+  btn.disabled = false; btn.textContent = 'Send reset link';
+}
+
+/* Set the new password using the session the recovery link created. There is
+ * no current-password check here (unlike the signed-in change-password flow)
+ * because the emailed link IS the proof of identity - that's the whole point
+ * of it for someone who has forgotten their password. */
+async function submitNewPassword() {
+  const next = document.getElementById('rp-pass').value;
+  const confirmPw = document.getElementById('rp-confirm').value;
+  if (!next || !confirmPw) { setLoginMsg('rp-msg', 'Enter and confirm your new password.', true); return; }
+  if (next.length < MIN_PASSWORD_LEN) {
+    setLoginMsg('rp-msg', `Password must be at least ${MIN_PASSWORD_LEN} characters.`, true); return;
+  }
+  if (next !== confirmPw) { setLoginMsg('rp-msg', "The password and its confirmation don't match.", true); return; }
+
+  const btn = document.getElementById('rp-save-btn');
+  btn.disabled = true; btn.textContent = 'Updating\u2026';
+  try {
+    const { error } = await sb.auth.updateUser({ password: next });
+    if (error) {
+      setLoginMsg('rp-msg', error.message || 'Could not update your password. The link may have expired - request a new one.', true);
+      return;
+    }
+    /* Sign the recovery session out so they prove the new password works,
+     * and strip the token from the URL so a shared/bookmarked link is inert. */
+    await sb.auth.signOut();
+    clearRecoveryUrl();
+    showSignin();
+    toast('Password updated. Sign in with your new password.');
+  } catch (e) {
+    setLoginMsg('rp-msg', 'Something went wrong. Please request a new reset link.', true);
+  } finally {
+    btn.disabled = false; btn.textContent = 'Update password';
+  }
+}
+
+async function cancelPasswordReset() {
+  try { await sb.auth.signOut(); } catch (e) {}
+  clearRecoveryUrl();
+  showSignin();
+}
+
+function clearRecoveryUrl() {
+  try { history.replaceState(null, '', window.location.pathname); } catch (e) {}
+}
+
 
 async function handleLogin() {
   const email = document.getElementById('login-user').value.trim().toLowerCase();
