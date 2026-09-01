@@ -2002,7 +2002,8 @@
       </div>
       <div class="field">
         <label>Applies to</label>
-        <select id="hol-user"><option value="">All employees (company-wide)</option></select>
+        <div id="hol-user-list" style="border:1px solid var(--line); border-radius:6px; max-height:190px; overflow-y:auto; padding:8px 10px; background:var(--surface);"></div>
+        <p style="font-size:11px; color:var(--ink-muted); margin-top:4px;" id="hol-user-hint"></p>
       </div>
       <div class="field">
         <label>Holiday type</label>
@@ -6642,12 +6643,45 @@ async function saveCycle() {
 
 /* ============== HOLIDAYS (admin) ============== */
 function populateHolidayEmpSelect() {
-  const sel = document.getElementById('hol-user');
-  if (!sel) return;
+  const box = document.getElementById('hol-user-list');
+  if (!box) return;
   /* A terminated employee doesn't need a future holiday declared for them. */
   const employees = D.users.filter(u => u.role === 'employee' && !u.terminatedAt);
-  sel.innerHTML = '<option value="">All employees (company-wide)</option>' +
-    employees.map(u => `<option value="${u.id}">${u.name}</option>`).join('');
+  const row = (id, label, cls) =>
+    '<label style="display:flex; align-items:center; gap:8px; padding:4px 0; font-size:13px; cursor:pointer;">' +
+    '<input type="checkbox" class="' + cls + '" value="' + id + '" onchange="onHolUserChange()" style="width:auto; margin:0;">' +
+    '<span>' + label + '</span></label>';
+  box.innerHTML =
+    row('', '<strong>All employees (company-wide)</strong>', 'hol-user-all') +
+    '<div style="height:1px; background:var(--line); margin:6px 0;"></div>' +
+    employees.map(u => row(u.id, u.name, 'hol-user-one')).join('');
+  const all = box.querySelector('.hol-user-all');
+  if (all) all.checked = true;
+  onHolUserChange();
+}
+
+/* "All employees" and a hand-picked list are mutually exclusive: a holiday is
+ * either company-wide (one row, user_id null) or for specific people (one row
+ * each). Allowing both would silently queue a duplicate for anyone picked,
+ * which the unique index would then reject. */
+function onHolUserChange() {
+  const box = document.getElementById('hol-user-list');
+  if (!box) return;
+  const all = box.querySelector('.hol-user-all');
+  const ones = Array.prototype.slice.call(box.querySelectorAll('.hol-user-one'));
+  const allOn = !!(all && all.checked);
+  ones.forEach(cb => { if (allOn) cb.checked = false; cb.disabled = allOn; });
+  const n = ones.filter(cb => cb.checked).length;
+  const hint = document.getElementById('hol-user-hint');
+  if (!hint) return;
+  if (allOn) {
+    hint.textContent = 'Applies to everyone — recorded as one company-wide holiday.';
+  } else if (n) {
+    hint.textContent = n + ' employee' + (n === 1 ? '' : 's') +
+      ' selected — one holiday is recorded for each.';
+  } else {
+    hint.textContent = 'Pick at least one employee, or tick "All employees".';
+  }
 }
 function toggleHolHours() {
   const paid = document.getElementById('hol-paid').value === '1';
@@ -6657,7 +6691,6 @@ function openHolidayModal(presetDate) {
   populateHolidayEmpSelect();
   document.getElementById('hol-date').value = presetDate || today();
   document.getElementById('hol-name').value = '';
-  document.getElementById('hol-user').value = '';
   document.getElementById('hol-paid').value = '1';
   document.getElementById('hol-hours').value = 8;
   /* Label each type with the premium that is actually configured right now, so
@@ -6684,7 +6717,13 @@ function markAsHoliday(dateStr) {
 async function saveHoliday() {
   const date = document.getElementById('hol-date').value;
   const name = document.getElementById('hol-name').value.trim();
-  const userId = document.getElementById('hol-user').value || null;
+  const box = document.getElementById('hol-user-list');
+  const allCb = box && box.querySelector('.hol-user-all');
+  const allOn = !!(allCb && allCb.checked);
+  const picked = box ? [...box.querySelectorAll('.hol-user-one')].filter(cb => cb.checked).map(cb => cb.value) : [];
+  /* null = company-wide. Otherwise one row per person, which is what the
+   * existing user_id column already models - no schema change needed. */
+  const targets = allOn ? [null] : picked;
   const paid = document.getElementById('hol-paid').value === '1';
   const hours = paid ? Number(document.getElementById('hol-hours').value) : 0;
   const holTypeRaw = document.getElementById('hol-type').value;
@@ -6692,35 +6731,47 @@ async function saveHoliday() {
 
   if (!date) { toast('Pick a date'); return; }
   if (!name) { toast('Give the holiday a name'); return; }
+  if (!targets.length) { toast('Pick at least one employee, or tick "All employees"'); return; }
   if (paid && (!isFinite(hours) || hours <= 0)) { toast('Credited hours must be greater than 0'); return; }
 
-  /* Guard the unique indexes so the user gets a readable message, not a 23505. */
-  const dupe = D.holidays.find(h => h.date === date && (h.userId || null) === userId);
-  if (dupe) { toast('A holiday already exists for that date and scope'); return; }
+  /* Guard the unique index so this reads as a message rather than a 23505.
+   * With several people selected, one existing holiday should not throw away
+   * the rest - skip the clashes and report them. */
+  const clash = targets.filter(t => D.holidays.some(h => h.date === date && (h.userId || null) === t));
+  const fresh = targets.filter(t => clash.indexOf(t) === -1);
+  if (!fresh.length) {
+    toast(allOn ? 'A company-wide holiday already exists on that date'
+                : 'Everyone selected already has a holiday on that date');
+    return;
+  }
 
-  const payload = {
+  const rows = fresh.map(t => ({
     holiday_date: date,
     name,
-    user_id: userId,
+    user_id: t,
     paid,
     hours,
     holiday_type: holType,
     created_by: D.session
-  };
-  let { data, error } = await sb.from('holidays').insert(payload).select().single();
+  }));
+  let { data, error } = await sb.from('holidays').insert(rows).select();
   /* holidays.holiday_type arrives in migration 013. If that hasn't been run
    * yet, still save the holiday (as a regular one) rather than blocking HR -
    * and say plainly why the type didn't stick. */
   if (error && /holiday_type/i.test(error.message || '')) {
-    delete payload.holiday_type;
-    ({ data, error } = await sb.from('holidays').insert(payload).select().single());
-    if (!error) toast('Saved as a regular holiday - run migration 013 to enable holiday types');
+    const lean = rows.map(r => { const c = Object.assign({}, r); delete c.holiday_type; return c; });
+    ({ data, error } = await sb.from('holidays').insert(lean).select());
+    if (!error) toast('Saved as regular holidays - run migration 013 to enable holiday types');
   }
   if (error) { toast('Could not add holiday: ' + error.message); return; }
 
-  D.holidays.push(holidayFromRow(data));
+  (data || []).forEach(r => D.holidays.push(holidayFromRow(r)));
   closeHolidayModal();
-  toast('Holiday added');
+  const added = (data || []).length;
+  toast(clash.length
+    ? `Added for ${added}; skipped ${clash.length} who already had a holiday that date`
+    : (allOn ? 'Company-wide holiday added'
+             : `Holiday added for ${added} employee${added === 1 ? '' : 's'}`));
   renderHolidays();
   renderAdminTimesheets();
 }
