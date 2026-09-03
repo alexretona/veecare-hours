@@ -2874,24 +2874,23 @@ function leaveDurationLabel(l) {
  * A leave is filed as a from..to range, but not every calendar day inside it is
  * a day off work. Two things take a date back out:
  *
- *   excludedDates - days the filer un-ticked. Weekends come pre-un-ticked,
- *                   which is the bug this fixes: filing Fri Sep 4 to Mon Sep 7
- *                   used to charge 4 days and credit 8 leave hours on the
- *                   Saturday and Sunday.
- *   a paid holiday - nobody had to work it, so it must not burn a leave
- *                   credit. Resolved HERE rather than stored, so a holiday
- *                   declared after the leave was approved still counts.
+ * Only one thing takes a date back out: `excludedDates`, the days the filer
+ * un-ticked. Weekends come pre-un-ticked, which is the bug this fixes -
+ * filing Fri Sep 4 to Mon Sep 7 used to charge 4 days and credit 8 leave
+ * hours on the Saturday and Sunday.
  *
- * Returning false for a holiday is also what lets computeInvoice fall through
- * to its holiday branch and pay the day at the holiday rate instead of the
- * leave rate. Do not "optimise" this into a plain range check. */
+ * A paid holiday inside the range does NOT take the date out. It briefly did
+ * (2026-09-03), on the reasoning that nobody had to work it - but HR
+ * confirmed the contractors have no such benefit. A holiday landing inside
+ * approved leave is leave: the credit is consumed and it pays the plain
+ * rate, no premium. That is the precedence this app has always documented,
+ *     worked entry > approved leave > paid holiday
+ * and computeInvoice only reaches its holiday branch when no leave covers
+ * the day. Do not re-add a holiday check here without HR asking for it. */
 function leaveCoversDate(l, dateStr) {
   if (!l || !dateStr) return false;
   if (dateStr < l.from || dateStr > l.to) return false;
-  if ((l.excludedDates || []).indexOf(dateStr) !== -1) return false;
-  const h = getHolidayOn(l.userId, dateStr);
-  if (h && h.paid) return false;
-  return true;
+  return (l.excludedDates || []).indexOf(dateStr) === -1;
 }
 
 /* Every date a leave charges for. The single place the range is expanded --
@@ -2911,10 +2910,7 @@ function leaveCoveredDates(l) {
 /* The VL/SL balance is tracked in whole days. A partial leave consumes a
  * fraction of a day - hours / 8 - rather than a full day. */
 function leaveDayEquivalent(l) {
-  if (l.durationType === 'partial') {
-    /* A partial day that lands on a holiday charges nothing, same as a full one. */
-    return leaveCoversDate(l, l.from) ? round2((l.hours || 0) / 8) : 0;
-  }
+  if (l.durationType === 'partial') return round2((l.hours || 0) / 8);
   return leaveCoveredDates(l).length;
 }
 
@@ -4995,19 +4991,22 @@ function renderLeaveDayPicker() {
     if (weekend && LEAVE_TOUCHED.indexOf(d) === -1 && LEAVE_EXCLUDED.indexOf(d) === -1) {
       LEAVE_EXCLUDED.push(d);
     }
+    /* A holiday here is still a leave day - see leaveCoversDate. It is
+     * flagged so the filer can un-tick it themselves if they want to, but it
+     * is ticked and charged by default like any other working day. */
     const hol = getHolidayOn(u.id, d);
     const isHol = !!(hol && hol.paid);
-    const on = !isHol && LEAVE_EXCLUDED.indexOf(d) === -1;
+    const on = LEAVE_EXCLUDED.indexOf(d) === -1;
     if (on) charged++; else skipped.push(fmtDate(d));
 
     const note = isHol
-      ? ' <span style="color:var(--ink-muted);">&middot; paid holiday, not charged</span>'
+      ? ' <span style="color:var(--ink-muted);">&middot; ' + hol.name + '</span>'
       : (weekend ? ' <span style="color:var(--ink-muted);">&middot; weekend</span>' : '');
     rows.push(
       '<label style="display:flex; align-items:center; gap:8px; padding:3px 0; font-size:13px;' +
       ' text-transform:none; letter-spacing:normal; font-weight:400; color:var(--ink);' +
-      (isHol ? ' opacity:.6;' : ' cursor:pointer;') + '">' +
-      '<input type="checkbox"' + (on ? ' checked' : '') + (isHol ? ' disabled' : '') +
+      ' cursor:pointer;">' +
+      '<input type="checkbox"' + (on ? ' checked' : '') +
       ' onchange="onLeaveDayToggle(\'' + d + '\', this.checked)" style="width:auto; margin:0;">' +
       '<span>' + fmtDate(d) + note + '</span></label>'
     );

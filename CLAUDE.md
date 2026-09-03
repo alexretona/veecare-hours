@@ -68,7 +68,8 @@ note · 010 employee-proposed allowances · 011 leave hours · 012 separate holi
 pre-system backfill, year snapshots · 015 yearly leave allocations
 · 016 the 1.5× third holiday type, and **removal** of EL credits · 017 working-day-only
 leave ranges + retraction of approved leave · 018 `cancel_own_leave()` so employees
-can retract their own · 019 the `custom` holiday type carrying its own multiplier.
+can retract their own · 019 the `custom` holiday type carrying its own multiplier · 020 reverses 017’s
+holiday-inside-leave exemption.
 
 ### Leave balances
 `vl_balance` / `sl_balance` on `profiles` hold **remaining days** (not the annual
@@ -88,13 +89,11 @@ it shows in history and draws the balance down normally.
 ### Leave covers WORKING days only (migration 017)
 
 A leave is filed as `from..to`, but the range is not the same as the days it
-charges. Two things take a date back out, both resolved in `leaveCoversDate()`:
+charges. One thing takes a date back out, resolved in `leaveCoversDate()`:
 
 - **`excludedDates`** — days the filer un-ticked in the modal. Weekends inside a
   multi-day range come pre-un-ticked. A **single-day** request is never trimmed:
   a lone Saturday was filed deliberately by someone who works Saturdays.
-- **A paid holiday** — resolved at read time, never stored, so a holiday declared
-  *after* approval still counts.
 
 `leaveDayEquivalent()`, `getApprovedLeaveOn()` and every day count on screen go
 through that one helper. Do not reduce any of them to a plain `from <= d <= to`
@@ -158,10 +157,12 @@ worked entry  >  approved leave  >  paid holiday  >  unpaid absence
 ```
 A day with an actual time entry never also gets leave/holiday hours credited.
 
-**One exception, added in 017:** a *paid holiday* inside an approved leave range is
-paid as a HOLIDAY, not as leave. Nobody had to work it, so it must not burn a
-leave credit. `leaveCoversDate()` returns false for such a day, which is exactly
-what lets the loop fall through to its holiday branch.
+⚠️ **There is no exception for holidays.** Migration 017 briefly made a paid
+holiday inside approved leave pay as a HOLIDAY and keep the leave credit; HR
+confirmed on 2026-09-03 that the contractors have no such benefit, and migration
+020 reversed it. A holiday landing inside approved leave is **leave**: the credit
+is consumed and it pays the plain rate, no premium. `leaveCoversDate()` checks
+`excludedDates` only. **Don’t re-add a holiday check there** without HR asking.
 
 - Full-day leave credits `STANDARD_DAY_HOURS` (8); partial-day credits its stored hours.
 - Hours above the employee's `capHours` become `excessHours` (shown, not billed).
