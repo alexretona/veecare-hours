@@ -930,6 +930,8 @@
         </div>
       </div>
 
+      <div id="stale-shift-note" style="display:none; margin-bottom:16px; padding:10px 12px; background:var(--warn-soft); border-left:3px solid var(--vc-orange); border-radius:4px; font-size:12px; color:var(--ink);"></div>
+
       <div class="stat-grid">
         <div class="stat">
           <div class="stat-label">This week</div>
@@ -1125,6 +1127,7 @@
       <div class="panel">
         <div class="panel-header">
           <div class="panel-title">Who's working right now</div>
+          <button class="btn btn-ghost btn-sm" id="admin-refresh-btn" onclick="refreshAdminData()">Refresh</button>
         </div>
         <table>
           <thead><tr><th>Employee</th><th>Clocked in at</th><th>Duration</th><th>Status</th><th></th></tr></thead>
@@ -3924,15 +3927,61 @@ function todaysEntry(userId) {
  * open shift after the PH calendar date rolled over. This fixes that.
  *
  * If somehow more than one entry is in-progress (shouldn't happen), we take
- * the one with the most recent clock_in so the live shift wins. */
+ * the one with the most recent clock_in so the live shift wins.
+ *
+ * Ignoring the date needs an upper bound, though. A shift somebody forgot
+ * to close used to stay "active" indefinitely, and because today's shift
+ * sorts ahead of it while open, nothing looked wrong until they clocked
+ * out - at which point the old row became active again, the dashboard
+ * flipped back to "Clocked in", the Clock out button reappeared, and the
+ * NEXT clock-in was refused with "You are already clocked in". That left
+ * people stranded until an admin force-closed the row. See
+ * isStaleOpenEntry / staleOpenEntries. */
+/* No real shift runs this long. Past it, an open entry is a forgotten
+ * clock-out rather than someone still at work. */
+const MAX_OPEN_SHIFT_HOURS = 20;
+
+function isStaleOpenEntry(e) {
+  return !!e && e.status === 'in-progress' &&
+         hoursBetween(e.clockIn, nowISO()) > MAX_OPEN_SHIFT_HOURS;
+}
+
+/* Shifts left open too long to be real. They are deliberately NOT active:
+ * they no longer block clocking in, and no longer masquerade as a live
+ * shift on the dashboard. Surfaced instead - the employee files a COA, the
+ * admin can force-close them. */
+function staleOpenEntries(userId) {
+  return D.entries
+    .filter(e => (!userId || e.userId === userId) && isStaleOpenEntry(e))
+    .sort((a, b) => String(a.clockIn).localeCompare(String(b.clockIn)));
+}
+
 function activeEntry(userId) {
-  const open = D.entries.filter(e => e.userId === userId && e.status === 'in-progress');
+  const open = D.entries.filter(e =>
+    e.userId === userId && e.status === 'in-progress' && !isStaleOpenEntry(e));
   if (open.length === 0) return null;
   open.sort((a, b) => new Date(b.clockIn) - new Date(a.clockIn));
   return open[0];
 }
 
+/* An unfinished shift no longer pretends to be live, so it has to be said
+ * out loud - otherwise the hours just quietly go missing from payroll. */
+function renderStaleShiftNote() {
+  const box = document.getElementById('stale-shift-note');
+  if (!box) return;
+  const u = currentUser();
+  const stale = u ? staleOpenEntries(u.id) : [];
+  if (!stale.length) { box.style.display = 'none'; return; }
+  box.style.display = '';
+  box.innerHTML = '<strong>Unfinished shift' + (stale.length === 1 ? '' : 's') + '</strong> &mdash; ' +
+    'you clocked in on ' + stale.map(e => fmtDate(e.date)).join(', ') +
+    ' but never clocked out, so ' + (stale.length === 1 ? 'that day has' : 'those days have') +
+    ' no hours recorded. File a correction (COA) for ' +
+    (stale.length === 1 ? 'it' : 'them') + ' so the time is not lost. You can still clock in normally today.';
+}
+
 function updateClockStatus() {
+  renderStaleShiftNote();
   const u = currentUser();
   /* Night-shift safe: the open shift (any date) takes priority. Only if there's
    * no open shift do we look at whether today already has a completed entry. */
@@ -5091,12 +5140,33 @@ function switchAdminView(v) {
   if (v === 'holidays') { populateHolidayEmpSelect(); renderHolidays(); }
 }
 
+/* This app holds no realtime subscription, so the admin view is whatever
+ * was true at page load: someone clocking out afterwards still reads as
+ * clocked in until this is pressed. */
+async function refreshAdminData() {
+  const btn = document.getElementById('admin-refresh-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Refreshing...'; }
+  try {
+    await hydrate();
+    renderAdmin();
+    renderApprovals();
+    toast('Up to date');
+  } catch (e) {
+    toast('Could not refresh: ' + (e.message || e));
+  }
+  if (btn) { btn.disabled = false; btn.textContent = 'Refresh'; }
+}
+
 function renderAdmin() {
   document.getElementById('admin-today').textContent = fmtFullDate(today()) + ' · Manila time';
   /* "Active accounts" — terminated staff are excluded from this headline count. */
   const employees = D.users.filter(u => u.role==='employee' && !u.terminatedAt);
   document.getElementById('admin-emp-count').textContent = employees.length;
-  const active = D.entries.filter(e => e.status==='in-progress');
+  /* Forgotten clock-outs are not people at work - counting them made the
+   * headline wrong and hid the fact that they need fixing. Listed below
+   * with the live ones, but flagged. */
+  const active = D.entries.filter(e => e.status==='in-progress' && !isStaleOpenEntry(e));
+  const staleOpen = staleOpenEntries(null);
   document.getElementById('admin-active-count').textContent = active.length;
   const week = periodRange('this-week');
   const weekHrs = D.entries.filter(e => e.status==='completed' && e.date>=week.start && e.date<=week.end).reduce((s,e)=>s+workedHours(e),0);
@@ -5111,10 +5181,11 @@ function renderAdmin() {
   if (pendingCoas > 0) { coaDot.style.display='inline-block'; coaDot.textContent = pendingCoas; } else coaDot.style.display='none';
 
   const activeTbody = document.getElementById('active-employees');
-  if (active.length === 0) {
+  const shown = active.concat(staleOpen);
+  if (shown.length === 0) {
     activeTbody.innerHTML = '<tr><td colspan="5" class="empty">No one is clocked in right now.</td></tr>';
   } else {
-    activeTbody.innerHTML = active.map(e => {
+    activeTbody.innerHTML = shown.map(e => {
       const u = D.users.find(x => x.id===e.userId);
       let elapsed = hoursBetween(e.clockIn, nowISO());
       if (e.lunchStart && e.lunchEnd) elapsed -= lunchMinutes(e) / 60;
@@ -5132,11 +5203,17 @@ function renderAdmin() {
       /* Flag shifts that have run past a standard 8-hour day — usually means
        * the employee simply forgot to clock out, not that they're genuinely
        * still working. Gives the admin something to scan for at a glance. */
-      const overdueBadge = dur >= 8
+      /* Past MAX_OPEN_SHIFT_HOURS it is no longer "long", it is broken:
+       * the row stops counting as a live shift, so say that plainly rather
+       * than leave the admin reading it as someone still on duty. */
+      const staleBadge = isStaleOpenEntry(e)
+        ? ' <span class="badge rejected" style="font-size:9px; padding:1px 6px;" title="Never clocked out — force close it, or have them file a COA">unfinished</span>'
+        : '';
+      const overdueBadge = (!isStaleOpenEntry(e) && dur >= 8)
         ? ' <span class="badge absent" style="font-size:9px; padding:1px 6px;" title="Active more than 8 hours — likely a forgotten clock-out">⚠ 8+ hrs</span>'
         : '';
       return `<tr>
-        <td>${u.name}${onLunchBadge}${pausedBadge}${overdueBadge}</td>
+        <td>${u.name}${onLunchBadge}${pausedBadge}${staleBadge}${overdueBadge}</td>
         <td class="mono">${fmtTime(e.clockIn)}</td>
         <td class="mono">${dur} hrs</td>
         <td><span class="badge in">${isPaused(e) ? 'Paused' : 'Active'}</span></td>
