@@ -68,7 +68,7 @@ note · 010 employee-proposed allowances · 011 leave hours · 012 separate holi
 pre-system backfill, year snapshots · 015 yearly leave allocations
 · 016 the 1.5× third holiday type, and **removal** of EL credits · 017 working-day-only
 leave ranges + retraction of approved leave · 018 `cancel_own_leave()` so employees
-can retract their own.
+can retract their own · 019 the `custom` holiday type carrying its own multiplier.
 
 ### Leave balances
 `vl_balance` / `sl_balance` on `profiles` hold **remaining days** (not the annual
@@ -197,8 +197,23 @@ trimming them would misstate it. Only the room left for *worked* hours shrinks.
   | Regular holiday | `regular` | 2.0× |
   | Special non-working day | `special` | 1.3× |
   | Special holiday | `special_rest_day` | 1.5× |
+  | One-off rate for a single date | `custom` | `holidays.multiplier` |
 
-  Resolution order, implemented **only** in `holidayMultipliers(user)` — never
+  A `custom` holiday skips that table entirely: its rate lives on the holiday row
+  (`holidays.multiplier`) and pays `rate × multiplier`. It is a fourth *type*, not
+  an override on the other three, because the invoice keeps **one bucket per
+  rate** so each rate prints as its own auditable line — an override would put two
+  rates inside one bucket, which no single line can state honestly.
+
+  ⚠️ One cutoff can therefore print ONE custom rate. Two `custom` holidays with
+  DIFFERENT multipliers in the same period set `customHolidayConflict`, and the
+  admin is warned. **Do not “fix” that by averaging them** — a blended rate is
+  unauditable. The real fix, if it ever becomes common, is per-holiday invoice
+  lines. Custom hours are deliberately **not** hand-editable on the invoice: the
+  rate belongs to the date, and a typed copy only lets the two disagree.
+
+  Resolution order for the three standard types, implemented **only** in
+  `holidayMultipliers(user)` — never
   duplicate it: the employee's own `profiles.*_holiday_multiplier` (NULL =
   inherit) → `org_settings` → the statutory constants. Per-person overrides
   remain on top of the three standard types.
