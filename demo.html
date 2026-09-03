@@ -1376,13 +1376,13 @@
               <input type="number" id="org-hol-reg-mult" step="0.01" min="0">
             </div>
             <div class="field">
-              <label>Special non-working &times;</label>
+              <label>Special non-working day &times;</label>
               <input type="number" id="org-hol-spc-mult" step="0.01" min="0">
             </div>
           </div>
           <div class="row-2" style="max-width:460px;">
             <div class="field">
-              <label>Special on a rest day &times;</label>
+              <label>Special holiday &times;</label>
               <input type="number" id="org-hol-rst-mult" step="0.01" min="0">
             </div>
           </div>
@@ -1906,13 +1906,13 @@
             <input type="number" id="pay-hol-reg-mult" step="0.01" min="0">
           </div>
           <div class="field">
-            <label>Special non-working &times;</label>
+            <label>Special non-working day &times;</label>
             <input type="number" id="pay-hol-spc-mult" step="0.01" min="0">
           </div>
         </div>
         <div class="row-2">
           <div class="field">
-            <label>Special on a rest day &times;</label>
+            <label>Special holiday &times;</label>
             <input type="number" id="pay-hol-rst-mult" step="0.01" min="0">
           </div>
         </div>
@@ -2043,7 +2043,7 @@
         <select id="hol-type">
           <option value="regular">Regular holiday</option>
           <option value="special">Special non-working day</option>
-          <option value="special_rest_day">Special non-working day on a rest day</option>
+          <option value="special_rest_day">Special holiday</option>
         </select>
         <p style="font-size:11px; color:var(--ink-muted); margin-top:4px;" id="hol-type-hint"></p>
       </div>
@@ -2170,13 +2170,13 @@
               <td class="ib-amt" id="ib-holiday-amt">—</td>
             </tr>
             <tr>
-              <td class="lab">Special holiday <small style="font-weight:400; color:var(--ink-muted); display:block;">non-working day</small></td>
+              <td class="lab">Special non-working <small style="font-weight:400; color:var(--ink-muted); display:block;">hrs &times; premium</small></td>
               <td><input type="number" id="ib-spc-hol-rate" step="0.01" min="0" oninput="onIbFieldChange('ib-spc-hol-rate')" title="Auto-filled from the special non-working premium set for this employee."></td>
               <td><input type="number" id="ib-spc-holiday" step="0.25" min="0" oninput="onIbFieldChange('ib-spc-holiday')"></td>
               <td class="ib-amt" id="ib-spc-holiday-amt">—</td>
             </tr>
             <tr>
-              <td class="lab">Rest-day holiday <small style="font-weight:400; color:var(--ink-muted); display:block;">special day on a rest day</small></td>
+              <td class="lab">Special holiday <small style="font-weight:400; color:var(--ink-muted); display:block;">hrs &times; premium</small></td>
               <td><input type="number" id="ib-rst-hol-rate" step="0.01" min="0" oninput="onIbFieldChange('ib-rst-hol-rate')" title="Auto-filled from the rest-day premium set for this employee."></td>
               <td><input type="number" id="ib-rst-holiday" step="0.25" min="0" oninput="onIbFieldChange('ib-rst-holiday')"></td>
               <td class="ib-amt" id="ib-rst-holiday-amt">—</td>
@@ -2210,14 +2210,14 @@
               <td class="ib-amt" id="ib-holiday-m-amt">—</td>
             </tr>
             <tr>
-              <td class="lab">Special holiday <small style="font-weight:400; color:var(--ink-muted); display:block;">non-working day</small></td>
+              <td class="lab">Special non-working <small style="font-weight:400; color:var(--ink-muted); display:block;">hrs &times; premium</small></td>
               <td style="width:90px;"><input type="number" id="ib-spc-holiday-m" step="0.25" min="0" oninput="onIbFieldChange('ib-spc-holiday-m')" title="Special non-working hours"></td>
               <td style="width:110px;"><input type="number" id="ib-spc-hol-rate-m" step="0.01" min="0" oninput="onIbFieldChange('ib-spc-hol-rate-m')" title="Auto-filled from the special non-working premium set for this employee."></td>
               <td class="ib-amt" id="ib-spc-holiday-m-amt">—</td>
             </tr>
             <tr>
-              <td class="lab">Rest-day holiday <small style="font-weight:400; color:var(--ink-muted); display:block;">special day on a rest day</small></td>
-              <td style="width:90px;"><input type="number" id="ib-rst-holiday-m" step="0.25" min="0" oninput="onIbFieldChange('ib-rst-holiday-m')" title="Rest-day holiday hours"></td>
+              <td class="lab">Special holiday <small style="font-weight:400; color:var(--ink-muted); display:block;">hrs &times; premium</small></td>
+              <td style="width:90px;"><input type="number" id="ib-rst-holiday-m" step="0.25" min="0" oninput="onIbFieldChange('ib-rst-holiday-m')" title="Special holiday hours"></td>
               <td style="width:110px;"><input type="number" id="ib-rst-hol-rate-m" step="0.01" min="0" oninput="onIbFieldChange('ib-rst-hol-rate-m')" title="Auto-filled from the rest-day premium set for this employee."></td>
               <td class="ib-amt" id="ib-rst-holiday-m-amt">—</td>
             </tr>
@@ -2316,12 +2316,12 @@
               <td class="ib-amt" id="eh-holiday-amt">—</td>
             </tr>
             <tr>
-              <td class="lab">Special holiday <small style="font-weight:400; color:var(--ink-muted); display:block;">non-working day</small></td>
+              <td class="lab">Special non-working <small style="font-weight:400; color:var(--ink-muted); display:block;">hrs &times; premium</small></td>
               <td><input type="number" id="eh-spc-holiday" step="0.25" min="0" oninput="onEhFieldChange()"></td>
               <td class="ib-amt" id="eh-spc-holiday-amt">—</td>
             </tr>
             <tr>
-              <td class="lab">Rest-day holiday <small style="font-weight:400; color:var(--ink-muted); display:block;">special day on a rest day</small></td>
+              <td class="lab">Special holiday <small style="font-weight:400; color:var(--ink-muted); display:block;">hrs &times; premium</small></td>
               <td><input type="number" id="eh-rst-holiday" step="0.25" min="0" oninput="onEhFieldChange()"></td>
               <td class="ib-amt" id="eh-rst-holiday-amt">—</td>
             </tr>
@@ -3466,9 +3466,12 @@ const DEFAULT_REGULAR_HOLIDAY_MULTIPLIER = 2.0;
 const DEFAULT_VL_ALLOCATION = 12;
 const DEFAULT_SL_ALLOCATION = 5;
 const DEFAULT_SPECIAL_HOLIDAY_MULTIPLIER = 1.3;
-/* A special non-working day that falls on the employee’s rest day pays 150%
- * under PH rules - the third category HR asked to be automatic rather than
- * something they hand-enter per invoice. */
+/* The third holiday premium. It started life as "a special non-working day
+ * falling on a rest day", which is where the 150% and the stored value
+ * `special_rest_day` come from. HR renamed it to plain "Special holiday":
+ * in practice it is the premium a particular contract carries, not a statement
+ * about rest days. The stored value is deliberately unchanged so existing
+ * holidays keep resolving. */
 const DEFAULT_REST_DAY_HOLIDAY_MULTIPLIER = 1.5;
 
 function orgSettingsFromRow(r) {
@@ -3539,7 +3542,7 @@ function computeInvoice(user, start, end) {
    * with leave or holiday hours on top of it. */
   let holidayHours = 0;          /* regular holidays        - 2x by default */
   let specialHolidayHours = 0;   /* special non-working days - 1.3x by default */
-  let restDayHolidayHours = 0;   /* special day on a rest day  - 1.5x by default */
+  let restDayHolidayHours = 0;   /* "special holiday"          - 1.5x by default */
   const holidayDates = [];
   let leaveHours = 0;
   const leaveDates = [];
@@ -7375,7 +7378,7 @@ function openHolidayModal(presetDate) {
   typeSel.value = 'regular';
   typeSel.options[0].textContent = `Regular holiday (${m.regular}x)`;
   typeSel.options[1].textContent = `Special non-working day (${m.special}x)`;
-  typeSel.options[2].textContent = `Special non-working day on a rest day (${m.restDay}x)`;
+  typeSel.options[2].textContent = `Special holiday (${m.restDay}x)`;
   document.getElementById('hol-type-hint').textContent =
     'Sets the pay premium for this date. Company rates are configured in Settings; an employee whose contract differs uses their own override.';
   toggleHolHours();
@@ -7510,7 +7513,7 @@ async function saveOrgSettings() {
     regularHolidayMultiplier: reg, specialHolidayMultiplier: spc, restDayHolidayMultiplier: rst });
   renderOrgSettings();
   renderHolidays();
-  toast(`Holiday rates saved - regular ${reg}x, special ${spc}x, rest day ${rst}x`);
+  toast(`Holiday rates saved - regular ${reg}x, special non-working ${spc}x, special holiday ${rst}x`);
 }
 
 function renderHolidays() {
@@ -7534,7 +7537,7 @@ function renderHolidays() {
       : '<span class="badge out">Unpaid</span>';
     const typeBadge = !h.paid ? ''
       : (h.type === 'special_rest_day'
-          ? `<span class="badge on-leave" title="Special non-working day falling on a rest day">Rest day &middot; ${m.restDay}&times;</span>`
+          ? `<span class="badge on-leave" title="Special holiday - carries its own premium">Special holiday &middot; ${m.restDay}&times;</span>`
           : h.type === 'special'
           ? `<span class="badge on-leave" title="Special non-working day">Special &middot; ${m.special}&times;</span>`
           : `<span class="badge" title="Regular holiday">Regular &middot; ${m.regular}&times;</span>`);
@@ -8000,7 +8003,7 @@ function refreshBuilderTotals() {
   }
   if (c.holidayHours > 0) bits.push(`<span style="color:#8A6100;">Regular holiday: <strong>${c.holidayHours}</strong> hrs @ ${c.holidayMultiplier}&times;</span>`);
   if (c.specialHolidayHours > 0) bits.push(`<span style="color:#8A6100;">Special holiday: <strong>${c.specialHolidayHours}</strong> hrs @ ${c.specialHolidayMultiplierUsed}&times;</span>`);
-  if (c.restDayHolidayHours > 0) bits.push(`<span style="color:#8A6100;">Rest-day holiday: <strong>${c.restDayHolidayHours}</strong> hrs @ ${c.restDayHolidayMultiplierUsed}&times;</span>`);
+  if (c.restDayHolidayHours > 0) bits.push(`<span style="color:#8A6100;">Special holiday: <strong>${c.restDayHolidayHours}</strong> hrs @ ${c.restDayHolidayMultiplierUsed}&times;</span>`);
   if (c.leaveHours > 0) bits.push(`<span style="color:#1E5BA8;">Leave (VL/SL): <strong>${c.leaveHours}</strong> hrs</span>`);
   document.getElementById('ib-context').innerHTML = bits.join(' &nbsp;·&nbsp; ');
 
@@ -8232,7 +8235,7 @@ function openInvoicePreview(inv, existing, mode) {
     </tr>` : '';
 
   const holidayNote = inv.holidayDates && inv.holidayDates.length
-    ? `<div class="inv-note">Holiday hours cover: ${inv.holidayDates.map(h => `${fmtDate(h.date)} — ${h.name}${h.type === 'special_rest_day' ? ' (special non-working, rest day)' : h.type === 'special' ? ' (special non-working)' : ''} (${round2(h.hours)} hrs)`).join('; ')}.</div>`
+    ? `<div class="inv-note">Holiday hours cover: ${inv.holidayDates.map(h => `${fmtDate(h.date)} — ${h.name}${h.type === 'special_rest_day' ? ' (special holiday)' : h.type === 'special' ? ' (special non-working)' : ''} (${round2(h.hours)} hrs)`).join('; ')}.</div>`
     : '';
   const leaveNote = inv.leaveDates && inv.leaveDates.length
     ? `<div class="inv-note">Leave hours cover: ${inv.leaveDates.map(l => `${fmtDate(l.date)} — ${l.type} (${round2(l.hours)} hrs)`).join('; ')}.</div>`
@@ -9157,7 +9160,7 @@ function openEmpHoursModal(u, cyc) {
   if (!isMonthly && c.cap !== null) bits.push(`Cap: <strong>${round2(c.cap)}</strong> hrs`);
   if (c.holidayHours > 0) bits.push(`<span style="color:#8A6100;">Regular holiday: <strong>${c.holidayHours}</strong> hrs @ ${c.holidayMultiplier}&times;</span>`);
   if (c.specialHolidayHours > 0) bits.push(`<span style="color:#8A6100;">Special holiday: <strong>${c.specialHolidayHours}</strong> hrs @ ${c.specialHolidayMultiplierUsed}&times;</span>`);
-  if (c.restDayHolidayHours > 0) bits.push(`<span style="color:#8A6100;">Rest-day holiday: <strong>${c.restDayHolidayHours}</strong> hrs @ ${c.restDayHolidayMultiplierUsed}&times;</span>`);
+  if (c.restDayHolidayHours > 0) bits.push(`<span style="color:#8A6100;">Special holiday: <strong>${c.restDayHolidayHours}</strong> hrs @ ${c.restDayHolidayMultiplierUsed}&times;</span>`);
   if (c.leaveHours > 0) bits.push(`<span style="color:#1E5BA8;">Leave (VL/SL): <strong>${c.leaveHours}</strong> hrs</span>`);
   document.getElementById('eh-context').innerHTML = bits.join(' &nbsp;·&nbsp; ');
 
