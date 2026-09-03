@@ -1543,7 +1543,7 @@
 <div class="modal-backdrop" id="cancel-leave-modal">
   <div class="modal">
     <div class="modal-header">
-      <div class="modal-title">Cancel approved leave</div>
+      <div class="modal-title" id="cancel-leave-title">Cancel approved leave</div>
       <button class="modal-close" onclick="closeCancelLeaveModal()">&times;</button>
     </div>
     <div class="modal-body">
@@ -2564,8 +2564,47 @@ let DEMO_PASSWORD = 'demo1234';
  * panel logic matches index.html rather than diverging. */
 const IS_PASSWORD_RECOVERY = false;
 
+/* Mirrors public.cancel_own_leave (migration 018). Kept in step with the
+ * SQL deliberately: if the demo allowed something production refuses, the
+ * demo would be lying about the product. */
+async function mockRpc(name, args) {
+  if (name !== 'cancel_own_leave') return { data: null, error: { message: 'Unknown function ' + name } };
+  const l = D.leaves.find(x => x.id === args.p_leave_id);
+  const fail = m => ({ data: null, error: { message: m } });
+  if (!String(args.p_reason || '').trim()) return fail('A reason is required.');
+  if (!l) return fail('That leave no longer exists.');
+  if (l.userId !== D.session) return fail('You can only cancel your own leave.');
+  if (l.status !== 'approved') return fail('Only approved leave is cancelled here.');
+  if (l.from <= today()) return fail('That leave has already started, so your admin has to cancel it.');
+  if ((D.invoices || []).some(i => i.userId === l.userId && i.periodStart <= l.to && l.from <= i.periodEnd)) {
+    return fail('An invoice already covers those dates. Ask your admin.');
+  }
+  l.status = 'cancelled';
+  l.cancelledAt = nowISO();
+  l.cancelledBy = D.session;
+  l.cancelReason = args.p_reason;
+  const days = Number(l.balanceDeducted) || 0;
+  const map = LEAVE_BALANCE_FIELDS[l.type];
+  if (!map || days <= 0) return { data: 0, error: null };
+  /* Writes to the mock's storage layer, NOT to D.users - the real function
+   * updates Postgres and leaves the browser's cached copy alone, so the caller
+   * still has to refresh it. Mutating D.users here would double-credit. */
+  const row = DB.profiles.find(p => p.id === l.userId);
+  const col = map.col;
+  const before = round2((row ? row[col] : 0) || 0);
+  if (row) row[col] = round2(before + days);
+  DB.leave_balance_adjustments.push({
+    id: 'lba-' + Date.now(), user_id: l.userId, leave_type: l.type,
+    old_balance: before, new_balance: round2(before + days),
+    reason: 'Employee cancelled their approved leave ' + l.from + ' - ' + args.p_reason,
+    adjusted_by: D.session, adjusted_at: nowISO()
+  });
+  return { data: days, error: null };
+}
+
 const sb = {
   from: mockFrom,
+  rpc: mockRpc,
   auth: {
     getSession: async () => ({ data: { session: null } }),
     signOut: async () => ({ error: null }),
@@ -4810,8 +4849,21 @@ function renderLeaves() {
     <td class="mono">${leaveDurationLabel(l)}</td>
     <td>${l.reason||'—'}</td>
     <td><span class="badge ${l.status}">${l.status}</span>${l.cancelReason ? `<div style="font-size:10px; color:var(--ink-muted); margin-top:2px;">${l.cancelReason}</div>` : ''}</td>
-    <td>${l.status === 'pending' ? `<button class="btn btn-danger btn-sm" onclick="cancelLeave('${l.id}')">Cancel</button>` : ''}</td>
+    <td>${leaveRowAction(l)}</td>
   </tr>`).join('');
+}
+
+/* Pending leave is withdrawn outright - the admin never acted on it, so
+ * there is nothing to keep. Approved leave goes through the same modal the
+ * admin uses, and only while cancelLeaveBlockReason() allows it. */
+function leaveRowAction(l) {
+  if (l.status === 'pending') {
+    return '<button class="btn btn-danger btn-sm" onclick="cancelLeave(\'' + l.id + '\')">Cancel</button>';
+  }
+  if (l.status === 'approved' && !cancelLeaveBlockReason(l, currentUser())) {
+    return '<button class="btn btn-danger btn-sm" onclick="openCancelLeaveModal(\'' + l.id + '\')">Cancel</button>';
+  }
+  return '';
 }
 
 function openLeaveModal() {
@@ -6687,25 +6739,50 @@ function invoiceCoveringLeave(l) {
   ) || null;
 }
 
+/* Why this leave cannot be cancelled right now, or null if it can. One
+ * function so the button, the modal and the write all agree - a button that
+ * appears and then refuses is worse than no button. */
+function cancelLeaveBlockReason(l, by) {
+  if (!l) return 'That leave no longer exists.';
+  if (l.status !== 'approved') return 'Only approved leave is cancelled here.';
+
+  /* Cancelling under an invoice would silently disagree with a document the
+   * client already has. Revise the invoice instead. */
+  const inv = invoiceCoveringLeave(l);
+  if (inv) {
+    return 'Invoice ' + (inv.invoiceNo || '') + ' already covers those dates (' + inv.status +
+           '). That needs an invoice revision, not a leave cancellation.';
+  }
+
+  if (!by || by.role === 'admin') return null;
+
+  if (l.userId !== by.id) return 'You can only cancel your own leave.';
+  /* Already started: the day may be on a timesheet, and cancelling turns it
+   * into an unpaid absence. An admin can still do it. */
+  if (l.from <= today()) {
+    return 'That leave has already started, so your admin has to cancel it. Message them and they can undo it for you.';
+  }
+  return null;
+}
+
 function openCancelLeaveModal(id) {
   const l = D.leaves.find(x => x.id === id);
   if (!l) return;
-  if (l.status !== 'approved') { toast('Only approved leave needs cancelling here.'); return; }
-
-  const inv = invoiceCoveringLeave(l);
-  if (inv) {
-    toast('Invoice ' + (inv.invoiceNo || '') + ' already covers those dates (' + inv.status +
-          '). Revise the invoice instead of cancelling the leave.');
-    return;
-  }
+  const blocked = cancelLeaveBlockReason(l, currentUser());
+  if (blocked) { toast(blocked); return; }
 
   const u = D.users.find(x => x.id === l.userId) || { name: 'Unknown' };
   const days = leaveRefundDays(l);
   const map = LEAVE_BALANCE_FIELDS[l.type];
   document.getElementById('cl-id').value = id;
   document.getElementById('cl-reason').value = '';
+  /* An employee cancelling their own leave does not need to be told whose
+   * it is, and does need to be told what it costs them. */
+  const self = (currentUser() || {}).id === l.userId;
+  document.getElementById('cancel-leave-title').textContent =
+    self ? 'Cancel your leave' : 'Cancel approved leave';
   document.getElementById('cl-summary').innerHTML =
-    '<strong>' + u.name + '</strong> &mdash; ' + l.type + ' leave, ' +
+    '<strong>' + (self ? 'Your' : u.name + '\u2019s') + '</strong> ' + l.type + ' leave, ' +
     fmtDate(l.from) + (l.from === l.to ? '' : ' to ' + fmtDate(l.to)) + '<br>' +
     (map
       ? (days > 0
@@ -6735,8 +6812,43 @@ async function confirmCancelLeave() {
   if (!l) return;
   const reason = document.getElementById('cl-reason').value.trim();
   if (!reason) { toast('Add a reason - cancelling approved leave is recorded for payroll'); return; }
+  /* Re-checked here, not just at the button: the page may have been open a
+   * while, and an invoice can land in between. */
+  const blocked = cancelLeaveBlockReason(l, currentUser());
+  if (blocked) { toast(blocked); closeCancelLeaveModal(); return; }
 
   const u = D.users.find(x => x.id === l.userId);
+  const me = currentUser();
+  const days = leaveRefundDays(l);
+  const map = LEAVE_BALANCE_FIELDS[l.type];
+
+  /* An employee cannot write their own balance - RLS sees to that, and so it
+   * should. Their cancellation goes through a SECURITY DEFINER function that
+   * re-checks ownership, the not-yet-started rule and the invoice guard in
+   * the database. The admin path below writes directly, as it always has. */
+  if (me && me.role !== 'admin') {
+    const { error } = await sb.rpc('cancel_own_leave', { p_leave_id: id, p_reason: reason });
+    if (error) {
+      const missing = /cancel_own_leave|PGRST202|does not exist/i.test(error.message || '');
+      toast(missing
+        ? 'Cancelling is not enabled yet - run migration 018.'
+        : ('Could not cancel: ' + (error.message || '')));
+      return;
+    }
+    l.status = 'cancelled';
+    l.cancelledAt = nowISO();
+    l.cancelledBy = D.session;
+    l.cancelReason = reason;
+    if (map && days > 0 && u) u[map.app] = round2((u[map.app] || 0) + days);
+    closeCancelLeaveModal();
+    toast(map && days > 0
+      ? 'Leave cancelled - ' + round2(days) + ' day(s) of ' + map.label + ' returned'
+      : 'Leave cancelled');
+    renderLeaves();
+    renderStats();
+    return;
+  }
+
   const cancelledAt = nowISO();
   const patch = {
     status: 'cancelled',
@@ -6752,8 +6864,6 @@ async function confirmCancelLeave() {
   }
   if (error) { toast('Could not cancel: ' + error.message); return; }
 
-  const days = leaveRefundDays(l);
-  const map = LEAVE_BALANCE_FIELDS[l.type];
   if (map && days > 0 && u) {
     const before = round2(u[map.app] || 0);
     const after = round2(before + days);
@@ -6786,6 +6896,8 @@ async function confirmCancelLeave() {
   renderLeaveHistory();
   renderApprovals();
   renderAdmin();
+  renderLeaves();
+  renderStats();
 }
 
 function renderLeaveHistory() {
@@ -8885,14 +8997,51 @@ function openShiftInCycle(user, cyc) {
  *                                     last day (rest day, leave, holiday) there
  *                                     is nothing to wait for and they simply
  *                                     become eligible the next day. */
+/* A day nobody is expected to work: a weekend, or a paid holiday. Same
+ * Mon-Fri assumption the leave day-picker and absent tagging already make. */
+function isNonWorkingDay(user, dateStr) {
+  const dow = phDayOfWeek(dateStr);
+  if (dow === 0 || dow === 6) return true;
+  const h = getHolidayOn(user.id, dateStr);
+  return !!(h && h.paid);
+}
+
+function allNonWorkingThrough(user, from, end) {
+  let d = from, guard = 0;
+  while (d <= end && guard < 40) {
+    if (!isNonWorkingDay(user, d)) return false;
+    d = addDays(d, 1); guard++;
+  }
+  return true;
+}
+
+function closedShiftOn(user, dateStr) {
+  return D.entries.some(e => e.userId === user.id && e.status === 'completed' && e.date === dateStr);
+}
+
 function cycleReadyToInvoice(user, cyc) {
   if (!user || !cyc) return false;
   const t = today();
-  if (t < cyc.end) return false;
+  /* Hours that are not final yet - covers the night shift still running at
+   * 2am on the day after the cutoff closed. */
   if (openShiftInCycle(user, cyc)) return false;
   if (t > cyc.end) return true;
-  return D.entries.some(e =>
-    e.userId === user.id && e.status === 'completed' && e.date === cyc.end);
+  if (t === cyc.end) return closedShiftOn(user, cyc.end);
+
+  /* Still inside the cutoff. A cutoff that ENDS on a weekend is finished
+   * work-wise on the Friday, and waiting until Monday to invoice helps
+   * nobody. Release it once everything left is a weekend or paid holiday
+   * and the last working day is actually done.
+   *
+   *   day shift  - clocks out Friday 5pm, cutoff ends Sunday: today is the
+   *                last working day and the shift is closed.
+   *   night shift - in Friday 8pm, out Saturday 5am. Today is Saturday (a
+   *                non-working day) and the entry, dated Friday, is closed. */
+  if (!allNonWorkingThrough(user, addDays(t, 1), cyc.end)) return false;
+  if (closedShiftOn(user, t)) return true;
+  return isNonWorkingDay(user, t) &&
+    D.entries.some(e => e.userId === user.id &&
+      e.status === 'completed' && e.date >= cyc.start && e.date < t);
 }
 
 function empRequestableCutoff() {
