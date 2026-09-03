@@ -66,8 +66,9 @@ Notable: 007 termination · 008 line items + request flow · 009 request concern
 note · 010 employee-proposed allowances · 011 leave hours · 012 separate holiday rate
 · 013 holiday multipliers + holiday types · 014 admin balance adjustment + audit,
 pre-system backfill, year snapshots · 015 yearly leave allocations
-· 016 the 1.5× rest-day holiday, and **removal** of EL credits · 017 working-day-only
-leave ranges + retraction of approved leave.
+· 016 the 1.5× third holiday type, and **removal** of EL credits · 017 working-day-only
+leave ranges + retraction of approved leave · 018 `cancel_own_leave()` so employees
+can retract their own.
 
 ### Leave balances
 `vl_balance` / `sl_balance` on `profiles` hold **remaining days** (not the annual
@@ -107,11 +108,24 @@ pay. The employee lost twice.
 | State | Who | What happens |
 |---|---|---|
 | `pending` | the employee | hard-deleted — the admin never acted on it |
-| `approved` | **admin only** | flips to `cancelled`, balance returned, reason required |
+| `approved`, not yet started | the employee | same, but through `cancel_own_leave()` |
+| `approved`, already started | **admin only** | flips to `cancelled`, balance returned, reason required |
 
 An approved leave already moved a balance, so it is kept and flagged rather than
 deleted. Cancelling is **blocked while an invoice covers the dates** — that needs
 an invoice revision, not a quiet balance edit.
+
+`cancelLeaveBlockReason(leave, by)` is the ONLY place that decides whether a
+cancellation is allowed — the button, the modal and the write all read it, so a
+button can never appear and then refuse. The write re-checks anyway; an invoice
+can land while the page sits open.
+
+⚠️ An employee’s cancellation goes through the **`cancel_own_leave()`** Postgres
+function, not direct writes. They must never write `profiles.vl_balance`, and a
+client-side guard on something that moves payroll numbers is a hint, not a
+control. The function re-checks ownership, the not-yet-started rule and the
+invoice guard server-side. `demo.html`’s mock `rpc()` mirrors it deliberately —
+if the demo allowed what production refuses, the demo would be lying.
 
 ⚠️ The refund is always `balance_deducted`, **never a fresh day count**.
 `drawDownLeaveBalance()` clamps at zero, so a clamped deduction took less than
@@ -182,7 +196,7 @@ trimming them would misstate it. Only the room left for *worked* hours shrinks.
   |---|---|---|
   | Regular holiday | `regular` | 2.0× |
   | Special non-working day | `special` | 1.3× |
-  | Special day on a rest day | `special_rest_day` | 1.5× |
+  | Special holiday | `special_rest_day` | 1.5× |
 
   Resolution order, implemented **only** in `holidayMultipliers(user)` — never
   duplicate it: the employee's own `profiles.*_holiday_multiplier` (NULL =
@@ -229,6 +243,42 @@ Rules: only the **most recently completed** cutoff is requestable; **one request
 per cutoff**; **no withdrawal** after submitting.
 
 ---
+
+### An open shift expires (migration-free, `MAX_OPEN_SHIFT_HOURS`)
+
+`activeEntry()` deliberately ignores the calendar date so an 8pm→5am shift stays
+live past midnight. That needs an **upper bound**. Without one, a shift somebody
+forgot to close stayed active forever — and because today’s shift sorts ahead of
+it while open, nothing looked wrong until they clocked out:
+
+```
+after clocking out,  active is: stale   (should be: null)
+dashboard says: "Clocked in since 9:00 AM on Mon, Aug 31 (overnight shift)"
+```
+
+Three symptoms, only one ever reported: the dashboard flips back to Clocked in,
+the Clock out button returns, and **the next clock-in is refused** with "You are
+already clocked in" — stranding the employee until an admin force-closed the row.
+The date in that message is the tell.
+
+Past 20 hours an entry stops counting as active and is surfaced instead:
+`staleOpenEntries()` drives the employee banner and the admin "unfinished" badge.
+Don’t remove the bound to "support long shifts".
+
+### Cutoff release (`cycleReadyToInvoice`)
+
+A cutoff is invoiceable when the WORK is done, not when the calendar says so:
+
+- an open shift anywhere in the cycle always blocks it (hours aren’t final)
+- `today > end` → ready
+- `today === end` → ready once they’ve clocked out that day
+- **still inside the cutoff** → ready when every remaining day is a weekend or
+  paid holiday *and* the last working day is closed. A cutoff ending Sunday
+  releases on the Friday for a day shift, and on the Saturday for a night shift
+  whose Friday-dated entry closed at 5am.
+
+There is **no realtime subscription** anywhere in this app. Every admin panel is
+a page-load snapshot; that is why the overview has a Refresh button.
 
 ## Hard-won gotchas (these were real bugs — don't reintroduce)
 
