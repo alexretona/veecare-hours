@@ -7194,7 +7194,10 @@ function populateHolidayEmpSelect() {
   /* A terminated employee doesn't need a future holiday declared for them. */
   const employees = D.users.filter(u => u.role === 'employee' && !u.terminatedAt);
   const row = (id, label, cls) =>
-    '<label style="display:flex; align-items:center; gap:8px; padding:4px 0; font-size:13px; cursor:pointer;">' +
+    '<label style="display:flex; align-items:center; gap:8px; padding:4px 0; font-size:13px; cursor:pointer;' +
+    /* .field label uppercases everything inside it, which turned people’s
+     * names into SHOUTING. These rows are content, not labels. */
+    ' text-transform:none; letter-spacing:normal; font-weight:400; color:var(--ink);">' +
     '<input type="checkbox" class="' + cls + '" value="' + id + '" onchange="onHolUserChange()" style="width:auto; margin:0;">' +
     '<span>' + label + '</span></label>';
   box.innerHTML =
@@ -7289,7 +7292,11 @@ async function saveHoliday() {
   const paid = document.getElementById('hol-paid').value === '1';
   const hours = paid ? Number(document.getElementById('hol-hours').value) : 0;
   const holTypeRaw = document.getElementById('hol-type').value;
-  const holType = (holTypeRaw === 'special' || holTypeRaw === 'special_rest_day') ? holTypeRaw : 'regular';
+  /* Whitelist, so an unknown value can never reach the DB check constraint.
+   * 'custom' MUST be listed: it used to fall through to 'regular', which meant
+   * picking a one-off rate silently saved a 2x regular holiday instead. */
+  const holType = (holTypeRaw === 'special' || holTypeRaw === 'special_rest_day' || holTypeRaw === 'custom')
+    ? holTypeRaw : 'regular';
 
   if (!date) { toast('Pick a date'); return; }
   if (!name) { toast('Give the holiday a name'); return; }
