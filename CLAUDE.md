@@ -53,7 +53,7 @@ them into the **Supabase SQL editor** manually. There is no migration runner.
 | `time_entries` | Clock in/out, lunch, pauses. Soft-deleted via `deleted_at` |
 | `leave_requests` | VL/SL/EL. `status` pending/approved/rejected/**cancelled**. Full or partial-day. `excluded_dates` = days the range does not charge. `balance_deducted` = what actually came off. `is_backfill` marks pre-system leave. **EL is NOT credited** — only VL/SL draw down a balance (see `LEAVE_BALANCE_FIELDS`) |
 | `coa_requests` | Attendance correction requests |
-| `holidays` | Company-wide or per-employee. Paid/unpaid, hours |
+| `holidays` | Company-wide or per-employee. Paid/unpaid, hours. **Paid holidays apply to everyone ticked — no regularization gate** (owner, 2026-09-14). The admin’s Paid/Unpaid switch is the only control, so `saveHoliday()` confirms the pay consequence in plain words before writing: the form defaults to Paid · 8 hrs · All employees, and one missed switch once paid every contractor for a day nobody worked |
 | `invoices` | Invoice snapshots + workflow state |
 | `invoice_line_items` | Allowances / incentives / deductions per invoice |
 | `org_settings` | Single pinned row (`id = 1`). Company-wide holiday multipliers |

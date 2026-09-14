@@ -7340,6 +7340,28 @@ async function saveHoliday() {
     return;
   }
 
+  /* State the consequence in plain words before anything is written. The
+   * form defaults to Paid / 8 hrs / All employees, and one save with the
+   * switch missed paid every contractor for a day nobody worked. */
+  const scope = allOn
+    ? 'ALL employees (company-wide)'
+    : fresh.length + ' selected employee' + (fresh.length === 1 ? '' : 's');
+  let impact;
+  if (!paid) {
+    impact = 'UNPAID - ' + scope + ' get the day off (not tagged Absent). Nobody is paid for it.';
+  } else {
+    const m = holidayMultipliers(null);
+    const mult = isCustom ? customMult : (holType === 'special' ? m.special : holType === 'special_rest_day' ? m.restDay : m.regular);
+    impact = 'PAID - credits ' + hours + ' hrs at ' + mult + '× their base rate to ' + scope +
+             ', on their next invoice. If nobody should be paid for this day, cancel and set Treatment to Unpaid.';
+  }
+  const ok = await appConfirm(impact, {
+    title: 'Add "' + name + '" on ' + fmtDate(date) + '?',
+    okLabel: paid ? 'Add paid holiday' : 'Add unpaid holiday',
+    danger: paid && allOn
+  });
+  if (!ok) return;
+
   const rows = fresh.map(t => ({
     holiday_date: date,
     name,
