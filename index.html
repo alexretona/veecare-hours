@@ -8213,7 +8213,10 @@ function openInvoicePreview(inv, existing, mode) {
   const spcHolAmt = round2(spcHoliday * spcHolRate);
   const rstHolAmt = round2(rstHoliday * rstHolRate);
   const leaveAmt = round2(leave * rate);
-  const billedHours = round2(regular + overtime + holiday + spcHoliday + rstHoliday + leave);
+  /* Every paid bucket, including the one-off rate - Mari saw "72 Hours" in the
+   * description with 80 hours of pay beneath it and reasonably thought 8 had
+   * gone missing. */
+  const billedHours = round2(regular + overtime + holiday + spcHoliday + rstHoliday + cstHoliday + leave);
   /* Only say "REGULAR HOLIDAY" once another holiday bucket exists to tell it
    * apart from, so older invoices do not silently change wording. */
   const holLabel = (spcHoliday > 0 || rstHoliday > 0) ? 'REGULAR HOLIDAY HOURS' : 'HOLIDAY HOURS';
