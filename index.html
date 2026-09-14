@@ -2169,19 +2169,19 @@
               <td class="ib-amt" id="ib-leave-amt">—</td>
             </tr>
             <tr>
-              <td class="lab">Regular holiday <small style="font-weight:400; color:var(--ink-muted); display:block;">hrs × premium</small></td>
+              <td class="lab">Regular holiday <small style="font-weight:400; color:var(--ink-muted); display:block;">hrs WORKED × premium</small></td>
               <td><input type="number" id="ib-hol-rate" step="0.01" min="0" oninput="onIbFieldChange('ib-hol-rate')" title="Auto-filled from the regular-holiday premium set for this employee. Override only for a one-off."></td>
               <td><input type="number" id="ib-holiday" step="0.25" min="0" oninput="onIbFieldChange('ib-holiday')"></td>
               <td class="ib-amt" id="ib-holiday-amt">—</td>
             </tr>
             <tr>
-              <td class="lab">Special non-working <small style="font-weight:400; color:var(--ink-muted); display:block;">hrs &times; premium</small></td>
+              <td class="lab">Special non-working <small style="font-weight:400; color:var(--ink-muted); display:block;">hrs WORKED &times; premium</small></td>
               <td><input type="number" id="ib-spc-hol-rate" step="0.01" min="0" oninput="onIbFieldChange('ib-spc-hol-rate')" title="Auto-filled from the special non-working premium set for this employee."></td>
               <td><input type="number" id="ib-spc-holiday" step="0.25" min="0" oninput="onIbFieldChange('ib-spc-holiday')"></td>
               <td class="ib-amt" id="ib-spc-holiday-amt">—</td>
             </tr>
             <tr>
-              <td class="lab">Special holiday <small style="font-weight:400; color:var(--ink-muted); display:block;">hrs &times; premium</small></td>
+              <td class="lab">Special holiday <small style="font-weight:400; color:var(--ink-muted); display:block;">hrs WORKED &times; premium</small></td>
               <td><input type="number" id="ib-rst-hol-rate" step="0.01" min="0" oninput="onIbFieldChange('ib-rst-hol-rate')" title="Auto-filled from the rest-day premium set for this employee."></td>
               <td><input type="number" id="ib-rst-holiday" step="0.25" min="0" oninput="onIbFieldChange('ib-rst-holiday')"></td>
               <td class="ib-amt" id="ib-rst-holiday-amt">—</td>
@@ -2191,6 +2191,12 @@
               <td class="mono" id="ib-cst-hol-rate-disp" style="color:var(--ink-muted); padding-left:10px;">—</td>
               <td><input type="number" id="ib-cst-holiday" step="0.25" min="0" oninput="onIbFieldChange('ib-cst-holiday')" title="Hours at the one-off rate. Set to 0 if this person should not get it on this invoice."></td>
               <td class="ib-amt" id="ib-cst-holiday-amt">—</td>
+            </tr>
+            <tr id="ib-hoff-row" style="display:none;">
+              <td class="lab">Holiday &mdash; not worked <small style="font-weight:400; color:var(--ink-muted); display:block;">paid day off, plain rate</small></td>
+              <td class="mono" id="ib-hoff-rate-disp" style="color:var(--ink-muted); padding-left:10px;">—</td>
+              <td><input type="number" id="ib-hoff" step="0.25" min="0" oninput="onIbFieldChange('ib-hoff')" title="Hours credited for a paid holiday they did not work. Paid at the plain rate."></td>
+              <td class="ib-amt" id="ib-hoff-amt">—</td>
             </tr>
             <tr class="ib-total-row">
               <td class="lab">Total</td>
@@ -2215,19 +2221,19 @@
               <td class="ib-amt" id="ib-monthly-salary-amt">—</td>
             </tr>
             <tr>
-              <td class="lab">Regular holiday <small style="font-weight:400; color:var(--ink-muted); display:block;">hrs × premium</small></td>
+              <td class="lab">Regular holiday <small style="font-weight:400; color:var(--ink-muted); display:block;">hrs WORKED × premium</small></td>
               <td style="width:90px;"><input type="number" id="ib-holiday-m" step="0.25" min="0" oninput="onIbFieldChange('ib-holiday-m')" title="Holiday hours"></td>
               <td style="width:110px;"><input type="number" id="ib-hol-rate-m" step="0.01" min="0" oninput="onIbFieldChange('ib-hol-rate-m')" title="Auto-filled from the regular-holiday premium set for this employee."></td>
               <td class="ib-amt" id="ib-holiday-m-amt">—</td>
             </tr>
             <tr>
-              <td class="lab">Special non-working <small style="font-weight:400; color:var(--ink-muted); display:block;">hrs &times; premium</small></td>
+              <td class="lab">Special non-working <small style="font-weight:400; color:var(--ink-muted); display:block;">hrs WORKED &times; premium</small></td>
               <td style="width:90px;"><input type="number" id="ib-spc-holiday-m" step="0.25" min="0" oninput="onIbFieldChange('ib-spc-holiday-m')" title="Special non-working hours"></td>
               <td style="width:110px;"><input type="number" id="ib-spc-hol-rate-m" step="0.01" min="0" oninput="onIbFieldChange('ib-spc-hol-rate-m')" title="Auto-filled from the special non-working premium set for this employee."></td>
               <td class="ib-amt" id="ib-spc-holiday-m-amt">—</td>
             </tr>
             <tr>
-              <td class="lab">Special holiday <small style="font-weight:400; color:var(--ink-muted); display:block;">hrs &times; premium</small></td>
+              <td class="lab">Special holiday <small style="font-weight:400; color:var(--ink-muted); display:block;">hrs WORKED &times; premium</small></td>
               <td style="width:90px;"><input type="number" id="ib-rst-holiday-m" step="0.25" min="0" oninput="onIbFieldChange('ib-rst-holiday-m')" title="Special holiday hours"></td>
               <td style="width:110px;"><input type="number" id="ib-rst-hol-rate-m" step="0.01" min="0" oninput="onIbFieldChange('ib-rst-hol-rate-m')" title="Auto-filled from the rest-day premium set for this employee."></td>
               <td class="ib-amt" id="ib-rst-holiday-m-amt">—</td>
@@ -2237,6 +2243,12 @@
               <td style="width:90px;"><input type="number" id="ib-cst-holiday-m" step="0.25" min="0" oninput="onIbFieldChange('ib-cst-holiday-m')" title="Hours at the one-off rate. Set to 0 if this person should not get it on this invoice."></td>
               <td class="mono" id="ib-cst-hol-rate-disp-m" style="width:110px; color:var(--ink-muted); padding-left:10px;">—</td>
               <td class="ib-amt" id="ib-cst-holiday-m-amt">—</td>
+            </tr>
+            <tr id="ib-hoff-row-m" style="display:none;">
+              <td class="lab">Holiday &mdash; not worked <small style="font-weight:400; color:var(--ink-muted); display:block;">paid day off, plain rate</small></td>
+              <td style="width:90px;"><input type="number" id="ib-hoff-m" step="0.25" min="0" oninput="onIbFieldChange('ib-hoff-m')" title="Hours credited for a paid holiday they did not work. Paid at the plain rate."></td>
+              <td class="mono" id="ib-hoff-rate-disp-m" style="width:110px; color:var(--ink-muted); padding-left:10px;">—</td>
+              <td class="ib-amt" id="ib-hoff-m-amt">—</td>
             </tr>
             <tr>
               <td class="lab">Leave <small style="font-weight:400; color:var(--ink-muted); display:block;">VL/SL hrs × rate</small></td>
@@ -2328,17 +2340,17 @@
               <td class="ib-amt" id="eh-overtime-amt">—</td>
             </tr>
             <tr>
-              <td class="lab">Regular holiday</td>
+              <td class="lab">Regular holiday <small style="font-weight:400; color:var(--ink-muted); display:block;">hrs worked</small></td>
               <td><input type="number" id="eh-holiday" step="0.25" min="0" oninput="onEhFieldChange()"></td>
               <td class="ib-amt" id="eh-holiday-amt">—</td>
             </tr>
             <tr>
-              <td class="lab">Special non-working <small style="font-weight:400; color:var(--ink-muted); display:block;">hrs &times; premium</small></td>
+              <td class="lab">Special non-working <small style="font-weight:400; color:var(--ink-muted); display:block;">hrs WORKED &times; premium</small></td>
               <td><input type="number" id="eh-spc-holiday" step="0.25" min="0" oninput="onEhFieldChange()"></td>
               <td class="ib-amt" id="eh-spc-holiday-amt">—</td>
             </tr>
             <tr>
-              <td class="lab">Special holiday <small style="font-weight:400; color:var(--ink-muted); display:block;">hrs &times; premium</small></td>
+              <td class="lab">Special holiday <small style="font-weight:400; color:var(--ink-muted); display:block;">hrs WORKED &times; premium</small></td>
               <td><input type="number" id="eh-rst-holiday" step="0.25" min="0" oninput="onEhFieldChange()"></td>
               <td class="ib-amt" id="eh-rst-holiday-amt">—</td>
             </tr>
@@ -2346,6 +2358,11 @@
               <td class="lab">Special holiday <small style="font-weight:400; color:var(--ink-muted); display:block;">one-off rate</small></td>
               <td><input type="number" id="eh-cst-holiday" step="0.25" min="0" oninput="onEhFieldChange()"></td>
               <td class="ib-amt" id="eh-cst-holiday-amt">—</td>
+            </tr>
+            <tr id="eh-hoff-row" style="display:none;">
+              <td class="lab">Holiday &mdash; not worked <small style="font-weight:400; color:var(--ink-muted); display:block;">paid day off, plain rate</small></td>
+              <td><input type="number" id="eh-hoff" step="0.25" min="0" oninput="onEhFieldChange()"></td>
+              <td class="ib-amt" id="eh-hoff-amt">—</td>
             </tr>
             <tr>
               <td class="lab">Leave <small style="font-weight:400; color:var(--ink-muted); display:block;">VL/SL</small></td>
@@ -2564,7 +2581,7 @@ function holidayFromRow(r) {
  * those two columns. Everything else about the invoice still saves; only the
  * regular/special holiday SPLIT is lost until the migration is run. */
 function isMissingSpecialHolidayCol(error) {
-  return !!error && /(special_holiday|rest_day_holiday|custom_holiday)_(hours|rate|amount)/i.test(error.message || '');
+  return !!error && /(special_holiday|rest_day_holiday|custom_holiday|holiday_off)_(hours|rate|amount)/i.test(error.message || '');
 }
 function stripSpecialHolidayCols(payload) {
   const p = Object.assign({}, payload);
@@ -2575,6 +2592,7 @@ function stripSpecialHolidayCols(payload) {
   delete p.custom_holiday_hours;
   delete p.custom_holiday_rate;
   delete p.custom_holiday_amount;
+  delete p.holiday_off_hours;
   return p;
 }
 
@@ -2600,6 +2618,8 @@ function invoiceFromRow(r) {
     customHolidayHours: Number(r.custom_holiday_hours) || 0,
     customHolidayRate: Number(r.custom_holiday_rate) || 0,
     customHolidayAmount: Number(r.custom_holiday_amount) || 0,
+    /* Migration 021. Paid holiday not worked, plain rate. */
+    holidayOffHours: Number(r.holiday_off_hours) || 0,
     leaveHours: Number(r.leave_hours) || 0,
     /* Holiday pay is frequently a different rate than everything else on
      * the invoice (double pay, 1.5×, +30%, etc.) — falls back to the base
@@ -3386,53 +3406,72 @@ function computeInvoice(user, start, end) {
     e.userId === user.id && e.status === 'completed' &&
     e.date >= start && e.date <= end
   );
-  const worked = entries.reduce((s, e) => s + workedHours(e), 0);
-  const workedDates = new Set(entries.map(e => e.date));
+  /* Hours actually worked, per calendar date (a night shift is keyed to the
+   * date it started on). Needed per-date because a day's treatment now
+   * depends on whether it was a holiday. */
+  const hoursByDate = {};
+  entries.forEach(e => { hoursByDate[e.date] = (hoursByDate[e.date] || 0) + workedHours(e); });
 
-  /* Paid holidays AND approved VL/SL leave inside the window that the
-   * employee did not actually work — both are paid time off, so both should
-   * add billable hours to the invoice, not just reduce it to zero for that
-   * day. One pass over the date range applies the same precedence used
-   * everywhere else in the app (see getHolidayOn's doc comment):
-   *     worked  >  approved leave  >  holiday  >  (unpaid absence)
-   * A day already covered by an actual time entry is never double-credited
-   * with leave or holiday hours on top of it. */
-  let holidayHours = 0;          /* regular holidays        - 2x by default */
-  let specialHolidayHours = 0;   /* special non-working days - 1.3x by default */
-  let restDayHolidayHours = 0;   /* "special holiday"          - 1.5x by default */
-  /* A one-off premium set on the holiday itself (migration 019), rather than
-   * derived from the type. Collected separately because the invoice keeps
-   * one bucket per rate so each rate prints as its own auditable line. */
-  let customHolidayHours = 0;
+  /* ---- The holiday rule (owner, 2026-09-14) ----
+   *
+   *   Paid holiday, did NOT clock in -> the holiday's hours at the PLAIN rate
+   *                                     (holidayOffHours)
+   *   Paid holiday, DID clock in     -> the hours WORKED at that type's
+   *                                     premium (the four holiday buckets)
+   *   Unpaid holiday, DID clock in   -> plain rate, like any other day
+   *
+   * It used to be the other way round: the premium multiplied the unworked
+   * day, and working on a holiday earned nothing extra because the time entry
+   * simply won. So the four holiday buckets below now hold hours WORKED on a
+   * holiday, and the day off has a bucket of its own. Do not move the
+   * premium back onto the unworked day.
+   *
+   * Precedence for a day with no entry is unchanged:
+   *     approved leave  >  paid holiday  >  (unpaid absence)
+   * and a holiday inside approved leave is leave (migration 020). */
+  let worked = 0;                /* hours on ordinary days - regular rate */
+  let holidayHours = 0;          /* WORKED on a regular holiday        - 2x by default */
+  let specialHolidayHours = 0;   /* WORKED on a special non-working day - 1.3x by default */
+  let restDayHolidayHours = 0;   /* WORKED on a "special holiday"       - 1.5x by default */
+  let customHolidayHours = 0;    /* WORKED on a one-off-rate holiday   - its own multiplier */
+  let holidayOffHours = 0;       /* paid holiday NOT worked            - plain rate */
   const customMultipliers = [];
   const holidayDates = [];
   let leaveHours = 0;
   const leaveDates = [];
   let d = start, guard = 0;
   while (d <= end && guard < 400) {
-    if (!workedDates.has(d)) {
+    const hrs = hoursByDate[d] || 0;
+    const h = getHolidayOn(user.id, d);
+    const paidHol = !!(h && h.paid);
+    if (hrs > 0) {
+      if (paidHol) {
+        if (h.type === 'custom') {
+          customHolidayHours += hrs;
+          const cm = Number(h.multiplier) || 0;
+          if (cm > 0 && customMultipliers.indexOf(cm) === -1) customMultipliers.push(cm);
+        }
+        else if (h.type === 'special_rest_day') restDayHolidayHours += hrs;
+        else if (h.type === 'special') specialHolidayHours += hrs;
+        else holidayHours += hrs;
+        holidayDates.push({ date: d, name: h.name, hours: hrs, type: h.type || 'regular', worked: true });
+      } else {
+        worked += hrs;
+      }
+    } else {
       const leave = getApprovedLeaveOn(user.id, d);
       if (leave) {
-        const hrs = (leave.durationType === 'partial' && leave.hours != null) ? leave.hours : STANDARD_DAY_HOURS;
-        leaveHours += hrs;
-        leaveDates.push({ date: d, type: leave.type, hours: hrs });
-      } else {
-        const h = getHolidayOn(user.id, d);
-        if (h && h.paid) {
-          if (h.type === 'custom') {
-            customHolidayHours += h.hours;
-            const cm = Number(h.multiplier) || 0;
-            if (cm > 0 && customMultipliers.indexOf(cm) === -1) customMultipliers.push(cm);
-          }
-          else if (h.type === 'special_rest_day') restDayHolidayHours += h.hours;
-          else if (h.type === 'special') specialHolidayHours += h.hours;
-          else holidayHours += h.hours;
-          holidayDates.push({ date: d, name: h.name, hours: h.hours, type: h.type || 'regular' });
-        }
+        const lh = (leave.durationType === 'partial' && leave.hours != null) ? leave.hours : STANDARD_DAY_HOURS;
+        leaveHours += lh;
+        leaveDates.push({ date: d, type: leave.type, hours: lh });
+      } else if (paidHol) {
+        holidayOffHours += h.hours;
+        holidayDates.push({ date: d, name: h.name, hours: h.hours, type: h.type || 'regular', worked: false });
       }
     }
     d = addDays(d, 1); guard++;
   }
+  const workedDates = new Set(entries.map(e => e.date));
 
   const cap = (user.capHours === null || user.capHours === undefined || user.capHours === '')
     ? null : Number(user.capHours);
@@ -3441,7 +3480,10 @@ function computeInvoice(user, start, end) {
    * the cutoff's approved hours, not on top of them — see the block comment
    * above. Neither is ever clamped itself; only the room left for WORKED hours
    * shrinks, and anything past that becomes excess (shown, not billed). */
-  const paidTimeOff = leaveHours + holidayHours + specialHolidayHours + restDayHolidayHours + customHolidayHours;
+  /* Everything paid that is not an ordinary worked hour: leave, the day off,
+   * and hours worked on a holiday (billed at a premium, so kept out of the
+   * regular bucket - but still real hours against the cutoff's cap). */
+  const paidTimeOff = leaveHours + holidayOffHours + holidayHours + specialHolidayHours + restDayHolidayHours + customHolidayHours;
   const capForWorked = (cap === null) ? null : Math.max(0, cap - paidTimeOff);
   const billable = (capForWorked !== null && worked > capForWorked) ? capForWorked : worked;
   const excess   = (capForWorked !== null && worked > capForWorked) ? (worked - capForWorked) : 0;
@@ -3466,13 +3508,17 @@ function computeInvoice(user, start, end) {
   const specialHolidayAmt = specialHolidayHours * specialHolidayRate;
   const restDayHolidayAmt = restDayHolidayHours * restDayHolidayRate;
   const customHolidayAmt = customHolidayHours * customHolidayRate;
+  const holidayOffAmt = holidayOffHours * rate;   /* plain rate, by rule */
   const leaveAmt = leaveHours * rate;
 
   return {
     user,
     start, end,
     entries,
-    workedHours: round2(worked),
+    /* Every hour actually worked, on any kind of day - the context strip
+     * says "Worked: N hrs" and that must not shrink because some fell on a
+     * holiday. regularHours below is the plain-rate subset. */
+    workedHours: round2(worked + holidayHours + specialHolidayHours + restDayHolidayHours + customHolidayHours),
     regularHours: round2(billable),
     excessHours: round2(excess),
     overtimeHours: 0,               /* approved OT is not modelled yet; always 0 */
@@ -3480,6 +3526,7 @@ function computeInvoice(user, start, end) {
     specialHolidayHours: round2(specialHolidayHours),
     restDayHolidayHours: round2(restDayHolidayHours),
     customHolidayHours: round2(customHolidayHours),
+    holidayOffHours: round2(holidayOffHours),
     holidayRate,
     specialHolidayRate,
     restDayHolidayRate,
@@ -3502,8 +3549,9 @@ function computeInvoice(user, start, end) {
     specialHolidayAmount: round2(specialHolidayAmt),
     restDayHolidayAmount: round2(restDayHolidayAmt),
     customHolidayAmount: round2(customHolidayAmt),
+    holidayOffAmount: round2(holidayOffAmt),
     leaveAmount: round2(leaveAmt),
-    total: round2(regularAmt + holidayAmt + specialHolidayAmt + restDayHolidayAmt + customHolidayAmt + leaveAmt),
+    total: round2(regularAmt + holidayAmt + specialHolidayAmt + restDayHolidayAmt + customHolidayAmt + holidayOffAmt + leaveAmt),
     daysWorked: workedDates.size
   };
 }
@@ -7795,6 +7843,7 @@ function recomputeBuilder(reseed) {
       'ib-rst-hol-rate': computed.restDayHolidayRate,
       'ib-rst-holiday': computed.restDayHolidayHours,
       'ib-cst-holiday': computed.customHolidayHours || 0,
+      'ib-hoff': computed.holidayOffHours || 0,
       'ib-leave': computed.leaveHours
     };
     for (const id in seedHourly) {
@@ -7822,6 +7871,7 @@ function recomputeBuilder(reseed) {
       'ib-rst-holiday-m': computed.restDayHolidayHours,
       'ib-rst-hol-rate-m': computed.restDayHolidayRate,
       'ib-cst-holiday-m': computed.customHolidayHours || 0,
+      'ib-hoff-m': computed.holidayOffHours || 0,
       'ib-leave-m': computed.leaveHours,
       'ib-leave-rate-m': computed.rate
     };
@@ -7862,6 +7912,7 @@ function onIbFieldChange(field) {
     'ib-rst-hol-rate': c.restDayHolidayRate,
     'ib-rst-holiday': c.restDayHolidayHours,
     'ib-cst-holiday': c.customHolidayHours || 0,
+    'ib-hoff': c.holidayOffHours || 0,
     'ib-leave': c.leaveHours,
     'ib-monthly-salary': salaryDefault,
     'ib-holiday-m': c.holidayHours,
@@ -7871,6 +7922,7 @@ function onIbFieldChange(field) {
     'ib-rst-holiday-m': c.restDayHolidayHours,
     'ib-rst-hol-rate-m': c.restDayHolidayRate,
     'ib-cst-holiday-m': c.customHolidayHours || 0,
+    'ib-hoff-m': c.holidayOffHours || 0,
     'ib-leave-m': c.leaveHours,
     'ib-leave-rate-m': c.rate
   };
@@ -7908,8 +7960,11 @@ function refreshBuilderTotals() {
     const cstHrs = ibNum('ib-cst-holiday-m');
     const cstRate = round2(c.customHolidayRate || 0);
     const cstAmt = round2(cstHrs * cstRate);
-    syncCustomHolidayRow('ib-cst-row-m', 'ib-cst-hol-rate-disp-m', 'ib-cst-holiday-m-amt', c, cstHrs, cstRate, cstAmt);
-    total = round2(salary + holAmt + spcAmt + rstAmt + cstAmt + lvAmt + lineNet);
+    syncOptionalRow('ib-cst-row-m', 'ib-cst-hol-rate-disp-m', 'ib-cst-holiday-m-amt', c.customHolidayHours, cstHrs, cstRate, cstAmt);
+    const hoffHrs = ibNum('ib-hoff-m');
+    const hoffAmt = round2(hoffHrs * lvRate);   /* plain rate - same as leave */
+    syncOptionalRow('ib-hoff-row-m', 'ib-hoff-rate-disp-m', 'ib-hoff-m-amt', c.holidayOffHours, hoffHrs, lvRate, hoffAmt);
+    total = round2(salary + holAmt + spcAmt + rstAmt + cstAmt + hoffAmt + lvAmt + lineNet);
 
     document.getElementById('ib-monthly-salary-amt').textContent = currency(salary);
     document.getElementById('ib-holiday-m-amt').textContent = currency(holAmt);
@@ -7941,8 +7996,11 @@ function refreshBuilderTotals() {
     const cst = ibNum('ib-cst-holiday');
     const cstRate = round2(c.customHolidayRate || 0);
     const cstAmt = round2(cst * cstRate);
-    syncCustomHolidayRow('ib-cst-row', 'ib-cst-hol-rate-disp', 'ib-cst-holiday-amt', c, cst, cstRate, cstAmt);
-    total = round2(regAmt + otAmt + holAmt + spcAmt + rstAmt + cstAmt + lvAmt + lineNet);
+    syncOptionalRow('ib-cst-row', 'ib-cst-hol-rate-disp', 'ib-cst-holiday-amt', c.customHolidayHours, cst, cstRate, cstAmt);
+    const hoff = ibNum('ib-hoff');
+    const hoffAmt = round2(hoff * rate);
+    syncOptionalRow('ib-hoff-row', 'ib-hoff-rate-disp', 'ib-hoff-amt', c.holidayOffHours, hoff, rate, hoffAmt);
+    total = round2(regAmt + otAmt + holAmt + spcAmt + rstAmt + cstAmt + hoffAmt + lvAmt + lineNet);
 
     document.getElementById('ib-regular-amt').textContent = currency(regAmt);
     document.getElementById('ib-overtime-amt').textContent = currency(otAmt);
@@ -7951,7 +8009,7 @@ function refreshBuilderTotals() {
     document.getElementById('ib-rst-holiday-amt').textContent = currency(rstAmt);
     document.getElementById('ib-leave-amt').textContent = currency(lvAmt);
     document.getElementById('ib-total-amt-hourly').textContent = currency(total);
-    document.getElementById('ib-total-hours-hourly').textContent = round2(reg + ot + hol + spc + rst + cst + lv);
+    document.getElementById('ib-total-hours-hourly').textContent = round2(reg + ot + hol + spc + rst + cst + hoff + lv);
   }
 
   /* Context strip: what the raw data actually says, so an override is always
@@ -7963,7 +8021,8 @@ function refreshBuilderTotals() {
     if (c.cap !== null) bits.push(`Cap: <strong>${round2(c.cap)}</strong> hrs`);
     if (c.excessHours > 0) bits.push(`<span style="color:var(--vc-red);">Excess: <strong>${c.excessHours}</strong> hrs (unbilled)</span>`);
   }
-  if (c.holidayHours > 0) bits.push(`<span style="color:#8A6100;">Regular holiday: <strong>${c.holidayHours}</strong> hrs @ ${c.holidayMultiplier}&times;</span>`);
+  if (c.holidayOffHours > 0) bits.push(`<span style="color:#8A6100;">Holiday not worked: <strong>${c.holidayOffHours}</strong> hrs @ 1&times;</span>`);
+  if (c.holidayHours > 0) bits.push(`<span style="color:#8A6100;">Worked on regular holiday: <strong>${c.holidayHours}</strong> hrs @ ${c.holidayMultiplier}&times;</span>`);
   if (c.specialHolidayHours > 0) bits.push(`<span style="color:#8A6100;">Special non-working: <strong>${c.specialHolidayHours}</strong> hrs @ ${c.specialHolidayMultiplierUsed}&times;</span>`);
   if (c.restDayHolidayHours > 0) bits.push(`<span style="color:#8A6100;">Special holiday: <strong>${c.restDayHolidayHours}</strong> hrs @ ${c.restDayHolidayMultiplierUsed}&times;</span>`);
   if (c.customHolidayHours > 0) bits.push(`<span style="color:#8A6100;">One-off rate: <strong>${c.customHolidayHours}</strong> hrs @ ${c.customHolidayMultiplierUsed}&times;</span>`);
@@ -7981,10 +8040,10 @@ function refreshBuilderTotals() {
  * at a one-off rate in this period, or hours the admin/employee typed. So
  * invoices with no such holiday look exactly as they always did. The rate
  * is shown, never typed: it belongs to the holiday, not the invoice. */
-function syncCustomHolidayRow(rowId, rateId, amtId, c, hrs, rate, amt) {
+function syncOptionalRow(rowId, rateId, amtId, computedHrs, hrs, rate, amt) {
   const row = document.getElementById(rowId);
   if (!row) return;
-  const show = (c && c.customHolidayHours > 0) || hrs > 0;
+  const show = (computedHrs || 0) > 0 || hrs > 0;
   row.style.display = show ? '' : 'none';
   document.getElementById(rateId).textContent = show ? currency(rate) : '\u2014';
   document.getElementById(amtId).textContent = show ? currency(amt) : '\u2014';
@@ -8030,6 +8089,9 @@ function buildInvoiceFromBuilder() {
     const leave = ibNum('ib-leave-m');
     const leaveRate = ibNum('ib-leave-rate-m');
     const leaveAmt = round2(leave * leaveRate);
+    /* A paid holiday they did not work: plain rate, by rule. */
+    const hoffHours = ibNum('ib-hoff-m');
+    const hoffAmt = round2(hoffHours * leaveRate);
 
     return {
       user: u,
@@ -8060,9 +8122,11 @@ function buildInvoiceFromBuilder() {
       specialHolidayAmount: spcHolAmt,
       restDayHolidayAmount: rstHolAmt,
       customHolidayAmount: cstHolAmt,
+      holidayOffHours: hoffHours,
+      holidayOffAmount: hoffAmt,
       leaveAmount: leaveAmt,
       lineItems,
-      total: round2(salary + holAmt + spcHolAmt + rstHolAmt + cstHolAmt + leaveAmt + lineNet),
+      total: round2(salary + holAmt + spcHolAmt + rstHolAmt + cstHolAmt + hoffAmt + leaveAmt + lineNet),
       daysWorked: c.daysWorked,
       overridden
     };
@@ -8085,6 +8149,9 @@ function buildInvoiceFromBuilder() {
   const cstHolRate = round2((IB.computed && IB.computed.customHolidayRate) || 0);
   const cstHolAmt = round2(cstHoliday * cstHolRate);
   const leave = ibNum('ib-leave');
+  /* A paid holiday they did not work: plain rate, by rule. */
+  const hoffHours = ibNum('ib-hoff');
+  const hoffAmt = round2(hoffHours * rate);
   const regAmt = round2(regular * rate);
   const holAmt = round2(holiday * holRate);
   const spcHolAmt = round2(spcHoliday * spcHolRate);
@@ -8124,9 +8191,11 @@ function buildInvoiceFromBuilder() {
     specialHolidayAmount: spcHolAmt,
     restDayHolidayAmount: rstHolAmt,
     customHolidayAmount: cstHolAmt,
+    holidayOffHours: hoffHours,
+    holidayOffAmount: hoffAmt,
     leaveAmount: leaveAmt,
     lineItems,
-    total: round2(regAmt + otAmt + holAmt + spcHolAmt + rstHolAmt + cstHolAmt + leaveAmt + lineNet),
+    total: round2(regAmt + otAmt + holAmt + spcHolAmt + rstHolAmt + cstHolAmt + hoffAmt + leaveAmt + lineNet),
     daysWorked: c.daysWorked,
     overridden
   };
@@ -8199,6 +8268,9 @@ function openInvoicePreview(inv, existing, mode) {
   const cstHoliday = existing ? (existing.customHolidayHours || 0) : (inv.customHolidayHours || 0);
   const cstHolRate = existing ? (existing.customHolidayRate || 0) : (inv.customHolidayRate || 0);
   const cstHolAmt = round2(cstHoliday * cstHolRate);
+  /* Migration 021. Plain rate, so it borrows the invoice's own rate. */
+  const hoffHours = existing ? (existing.holidayOffHours || 0) : (inv.holidayOffHours || 0);
+  const hoffAmt = round2(hoffHours * rate);
   const total    = existing ? existing.totalAmount   : inv.total;
   /* A saved invoice keeps its line items in D.invoiceLineItems (looked up by
    * id); a not-yet-saved preview carries them directly on inv. */
@@ -8216,10 +8288,10 @@ function openInvoicePreview(inv, existing, mode) {
   /* Every paid bucket, including the one-off rate - Mari saw "72 Hours" in the
    * description with 80 hours of pay beneath it and reasonably thought 8 had
    * gone missing. */
-  const billedHours = round2(regular + overtime + holiday + spcHoliday + rstHoliday + cstHoliday + leave);
+  const billedHours = round2(regular + overtime + holiday + spcHoliday + rstHoliday + cstHoliday + hoffHours + leave);
   /* Only say "REGULAR HOLIDAY" once another holiday bucket exists to tell it
    * apart from, so older invoices do not silently change wording. */
-  const holLabel = (spcHoliday > 0 || rstHoliday > 0) ? 'REGULAR HOLIDAY HOURS' : 'HOLIDAY HOURS';
+  const holLabel = 'REGULAR HOLIDAY — WORKED';
   const isMonthly = payBasis === 'monthly';
 
   const logo = document.querySelector('.topbar-logo')?.src || '';
@@ -8237,7 +8309,7 @@ function openInvoicePreview(inv, existing, mode) {
     </tr>` : '';
 
   const holidayNote = inv.holidayDates && inv.holidayDates.length
-    ? `<div class="inv-note">Holiday hours cover: ${inv.holidayDates.map(h => `${fmtDate(h.date)} — ${h.name}${h.type === 'special_rest_day' ? ' (special holiday)' : h.type === 'special' ? ' (special non-working)' : ''} (${round2(h.hours)} hrs)`).join('; ')}.</div>`
+    ? `<div class="inv-note">Holiday hours cover: ${inv.holidayDates.map(h => `${fmtDate(h.date)} — ${h.name}${h.type === 'special_rest_day' ? ' (special holiday)' : h.type === 'special' ? ' (special non-working)' : h.type === 'custom' ? ' (one-off rate)' : ''} (${round2(h.hours)} hrs${h.worked ? ', worked' : ', not worked'})`).join('; ')}.</div>`
     : '';
   const leaveNote = inv.leaveDates && inv.leaveDates.length
     ? `<div class="inv-note">Leave hours cover: ${inv.leaveDates.map(l => `${fmtDate(l.date)} — ${l.type} (${round2(l.hours)} hrs)`).join('; ')}.</div>`
@@ -8265,24 +8337,31 @@ function openInvoicePreview(inv, existing, mode) {
             <td></td>
           </tr>` : ''}
           ${spcHoliday > 0 ? `<tr>
-            <td class="lab">SPECIAL NON-WORKING HOURS</td>
+            <td class="lab">SPECIAL NON-WORKING — WORKED</td>
             <td class="mono">${currency(spcHolRate)}</td>
             <td class="mono">${spcHoliday}</td>
             <td class="mono">${currency(spcHolAmt)}</td>
             <td></td>
           </tr>` : ''}
           ${rstHoliday > 0 ? `<tr>
-            <td class="lab">SPECIAL HOLIDAY HOURS</td>
+            <td class="lab">SPECIAL HOLIDAY — WORKED</td>
             <td class="mono">${currency(rstHolRate)}</td>
             <td class="mono">${rstHoliday}</td>
             <td class="mono">${currency(rstHolAmt)}</td>
             <td></td>
           </tr>` : ''}
           ${cstHoliday > 0 ? `<tr>
-            <td class="lab">SPECIAL HOLIDAY HOURS (ONE-OFF RATE)</td>
+            <td class="lab">ONE-OFF RATE — WORKED</td>
             <td class="mono">${currency(cstHolRate)}</td>
             <td class="mono">${cstHoliday}</td>
             <td class="mono">${currency(cstHolAmt)}</td>
+            <td></td>
+          </tr>` : ''}
+          ${hoffHours > 0 ? `<tr>
+            <td class="lab">HOLIDAY — NOT WORKED</td>
+            <td class="mono">${currency(rate)}</td>
+            <td class="mono">${hoffHours}</td>
+            <td class="mono">${currency(hoffAmt)}</td>
             <td></td>
           </tr>` : ''}
           ${leave > 0 ? `<tr>
@@ -8315,24 +8394,31 @@ function openInvoicePreview(inv, existing, mode) {
             <td></td>
           </tr>
           ${spcHoliday > 0 ? `<tr>
-            <td class="lab">SPECIAL NON-WORKING HOURS</td>
+            <td class="lab">SPECIAL NON-WORKING — WORKED</td>
             <td class="mono">${currency(spcHolRate)}</td>
             <td class="mono">${spcHoliday}</td>
             <td class="mono">${currency(spcHolAmt)}</td>
             <td></td>
           </tr>` : ''}
           ${rstHoliday > 0 ? `<tr>
-            <td class="lab">SPECIAL HOLIDAY HOURS</td>
+            <td class="lab">SPECIAL HOLIDAY — WORKED</td>
             <td class="mono">${currency(rstHolRate)}</td>
             <td class="mono">${rstHoliday}</td>
             <td class="mono">${currency(rstHolAmt)}</td>
             <td></td>
           </tr>` : ''}
           ${cstHoliday > 0 ? `<tr>
-            <td class="lab">SPECIAL HOLIDAY HOURS (ONE-OFF RATE)</td>
+            <td class="lab">ONE-OFF RATE — WORKED</td>
             <td class="mono">${currency(cstHolRate)}</td>
             <td class="mono">${cstHoliday}</td>
             <td class="mono">${currency(cstHolAmt)}</td>
+            <td></td>
+          </tr>` : ''}
+          ${hoffHours > 0 ? `<tr>
+            <td class="lab">HOLIDAY — NOT WORKED</td>
+            <td class="mono">${currency(rate)}</td>
+            <td class="mono">${hoffHours}</td>
+            <td class="mono">${currency(hoffAmt)}</td>
             <td></td>
           </tr>` : ''}
           <tr>
@@ -8542,6 +8628,7 @@ async function saveInvoice() {
           round2(inv.restDayHolidayRate || 0) === round2(orig.restDayHolidayRate || 0) &&
           round2(inv.customHolidayHours || 0) === round2(orig.customHolidayHours || 0) &&
           round2(inv.customHolidayRate || 0) === round2(orig.customHolidayRate || 0) &&
+          round2(inv.holidayOffHours || 0) === round2(orig.holidayOffHours || 0) &&
           round2(inv.leaveHours || 0) === round2(orig.leaveHours || 0) &&
           round2(inv.total) === round2(orig.totalAmount) &&
           (inv.payBasis || 'hourly') === (orig.payBasis || 'hourly') &&
@@ -8583,6 +8670,7 @@ async function saveInvoice() {
         custom_holiday_hours: inv.customHolidayHours || 0,
         custom_holiday_rate: inv.customHolidayRate || 0,
         custom_holiday_amount: inv.customHolidayAmount || 0,
+        holiday_off_hours: inv.holidayOffHours || 0,
         excess_hours: inv.excessHours,
         cap_hours: inv.cap,
         pay_basis: inv.payBasis || 'hourly',
@@ -8655,6 +8743,7 @@ async function saveInvoice() {
         custom_holiday_hours: inv.customHolidayHours || 0,
         custom_holiday_rate: inv.customHolidayRate || 0,
         custom_holiday_amount: inv.customHolidayAmount || 0,
+        holiday_off_hours: inv.holidayOffHours || 0,
     excess_hours: inv.excessHours,
     cap_hours: inv.cap,
     pay_basis: inv.payBasis || 'hourly',
@@ -8842,6 +8931,7 @@ function reviewRequestedInvoice(id) {
     trackAndSet('ib-spc-holiday-m', fresh.specialHolidayHours, i.specialHolidayHours || 0, 'Special non-working hours', hrsFmt);
     trackAndSet('ib-rst-holiday-m', fresh.restDayHolidayHours, i.restDayHolidayHours || 0, 'Special holiday hours', hrsFmt);
     trackAndSet('ib-cst-holiday-m', fresh.customHolidayHours || 0, i.customHolidayHours || 0, 'One-off holiday hours', hrsFmt);
+    trackAndSet('ib-hoff-m', fresh.holidayOffHours || 0, i.holidayOffHours || 0, 'Holiday (not worked) hours', hrsFmt);
     trackAndSet('ib-leave-rate-m', fresh.rate, i.rate, 'Leave rate', rateFmt);
     trackAndSet('ib-leave-m', fresh.leaveHours, i.leaveHours || 0, 'Leave hours', hrsFmt);
   } else {
@@ -8853,6 +8943,7 @@ function reviewRequestedInvoice(id) {
     trackAndSet('ib-spc-holiday', fresh.specialHolidayHours, i.specialHolidayHours || 0, 'Special non-working hours', hrsFmt);
     trackAndSet('ib-rst-holiday', fresh.restDayHolidayHours, i.restDayHolidayHours || 0, 'Special holiday hours', hrsFmt);
     trackAndSet('ib-cst-holiday', fresh.customHolidayHours || 0, i.customHolidayHours || 0, 'One-off holiday hours', hrsFmt);
+    trackAndSet('ib-hoff', fresh.holidayOffHours || 0, i.holidayOffHours || 0, 'Holiday (not worked) hours', hrsFmt);
     trackAndSet('ib-leave', fresh.leaveHours, i.leaveHours || 0, 'Leave hours', hrsFmt);
   }
 
@@ -9168,12 +9259,17 @@ function openEmpHoursModal(u, cyc) {
     if (ehCst) ehCst.value = c.customHolidayHours || 0;
     const ehCstRow = document.getElementById('eh-cst-row');
     if (ehCstRow) ehCstRow.style.display = (c.customHolidayHours > 0) ? '' : 'none';
+    const ehHoff = document.getElementById('eh-hoff');
+    if (ehHoff) ehHoff.value = c.holidayOffHours || 0;
+    const ehHoffRow = document.getElementById('eh-hoff-row');
+    if (ehHoffRow) ehHoffRow.style.display = (c.holidayOffHours > 0) ? '' : 'none';
     document.getElementById('eh-leave').value = c.leaveHours;
   }
 
   const bits = [`Worked: <strong>${c.workedHours}</strong> hrs over ${c.daysWorked} day${c.daysWorked === 1 ? '' : 's'}`];
   if (!isMonthly && c.cap !== null) bits.push(`Cap: <strong>${round2(c.cap)}</strong> hrs`);
-  if (c.holidayHours > 0) bits.push(`<span style="color:#8A6100;">Regular holiday: <strong>${c.holidayHours}</strong> hrs @ ${c.holidayMultiplier}&times;</span>`);
+  if (c.holidayOffHours > 0) bits.push(`<span style="color:#8A6100;">Holiday not worked: <strong>${c.holidayOffHours}</strong> hrs @ 1&times;</span>`);
+  if (c.holidayHours > 0) bits.push(`<span style="color:#8A6100;">Worked on regular holiday: <strong>${c.holidayHours}</strong> hrs @ ${c.holidayMultiplier}&times;</span>`);
   if (c.specialHolidayHours > 0) bits.push(`<span style="color:#8A6100;">Special non-working: <strong>${c.specialHolidayHours}</strong> hrs @ ${c.specialHolidayMultiplierUsed}&times;</span>`);
   if (c.restDayHolidayHours > 0) bits.push(`<span style="color:#8A6100;">Special holiday: <strong>${c.restDayHolidayHours}</strong> hrs @ ${c.restDayHolidayMultiplierUsed}&times;</span>`);
   if (c.customHolidayHours > 0) bits.push(`<span style="color:#8A6100;">One-off rate: <strong>${c.customHolidayHours}</strong> hrs @ ${c.customHolidayMultiplierUsed}&times;</span>`);
@@ -9222,7 +9318,8 @@ function refreshEhTotals() {
     const lvHrs = ehNum('eh-leave-m');
     const lvAmt = round2(lvHrs * rate);
     const cstHolAmt = round2((c.customHolidayHours || 0) * (c.customHolidayRate || 0));
-    const total = round2(salary + holAmt + lvAmt + cstHolAmt);
+    const hoffAmt = round2((c.holidayOffHours || 0) * rate);
+    const total = round2(salary + holAmt + lvAmt + cstHolAmt + hoffAmt);
 
     document.getElementById('eh-salary-amt').textContent = currency(salary);
     document.getElementById('eh-holiday-m-amt').textContent = currency(holAmt);
@@ -9249,7 +9346,11 @@ function refreshEhTotals() {
     const cstHolAmt = round2(cstHol * (c.customHolidayRate || 0));
     const ehCstAmt = document.getElementById('eh-cst-holiday-amt');
     if (ehCstAmt) ehCstAmt.textContent = currency(cstHolAmt);
-    const total = round2(regAmt + otAmt + holAmt + spcHolAmt + rstHolAmt + cstHolAmt + lvAmt);
+    const hoff = ehNum('eh-hoff');
+    const hoffAmt = round2(hoff * rate);
+    const ehHoffAmt = document.getElementById('eh-hoff-amt');
+    if (ehHoffAmt) ehHoffAmt.textContent = currency(hoffAmt);
+    const total = round2(regAmt + otAmt + holAmt + spcHolAmt + rstHolAmt + cstHolAmt + hoffAmt + lvAmt);
 
     document.getElementById('eh-regular-amt').textContent = currency(regAmt);
     document.getElementById('eh-overtime-amt').textContent = currency(otAmt);
@@ -9301,11 +9402,14 @@ function continueToRequestPreview() {
       customHolidayRate: c.customHolidayRate || 0,
       customHolidayHours: round2(c.customHolidayHours || 0),
       customHolidayAmount: round2((c.customHolidayHours || 0) * (c.customHolidayRate || 0)),
+      holidayOffHours: round2(c.holidayOffHours || 0),
+      holidayOffAmount: round2((c.holidayOffHours || 0) * c.rate),
       lineItems: [],
       total: round2(salary + holAmt + leaveAmt
         + round2(c.specialHolidayHours * c.specialHolidayRate)
         + round2(c.restDayHolidayHours * c.restDayHolidayRate)
-        + round2((c.customHolidayHours || 0) * (c.customHolidayRate || 0))),
+        + round2((c.customHolidayHours || 0) * (c.customHolidayRate || 0))
+        + round2((c.holidayOffHours || 0) * c.rate)),
       daysWorked: c.daysWorked,
       overridden: (round2(holiday) !== round2(c.holidayHours)) || (round2(leave) !== round2(c.leaveHours))
     };
@@ -9320,6 +9424,8 @@ function continueToRequestPreview() {
     /* The rate is the holiday's own; the hours are theirs to correct. */
     const cstHoliday = ehNum('eh-cst-holiday');
     const cstHolAmt = round2(cstHoliday * (c.customHolidayRate || 0));
+    const hoffHours = ehNum('eh-hoff');
+    const hoffAmt = round2(hoffHours * c.rate);
     const leave = ehNum('eh-leave');
     const regAmt = round2(regular * c.rate);
     const otAmt = round2(overtime * c.rate);
@@ -9353,9 +9459,11 @@ function continueToRequestPreview() {
       customHolidayRate: c.customHolidayRate || 0,
       customHolidayHours: cstHoliday,
       customHolidayAmount: cstHolAmt,
+      holidayOffHours: hoffHours,
+      holidayOffAmount: hoffAmt,
       regularAmount: regAmt, holidayAmount: holAmt, leaveAmount: leaveAmt,
       lineItems: [],
-      total: round2(regAmt + otAmt + holAmt + spcHolAmt + rstHolAmt + cstHolAmt + leaveAmt),
+      total: round2(regAmt + otAmt + holAmt + spcHolAmt + rstHolAmt + cstHolAmt + hoffAmt + leaveAmt),
       daysWorked: c.daysWorked,
       overridden
     };
@@ -9481,6 +9589,7 @@ async function submitInvoiceRequest() {
         custom_holiday_hours: inv.customHolidayHours || 0,
         custom_holiday_rate: inv.customHolidayRate || 0,
         custom_holiday_amount: inv.customHolidayAmount || 0,
+        holiday_off_hours: inv.holidayOffHours || 0,
     excess_hours: inv.excessHours,
     cap_hours: inv.cap,
     pay_basis: inv.payBasis,

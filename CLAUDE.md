@@ -69,7 +69,7 @@ pre-system backfill, year snapshots · 015 yearly leave allocations
 · 016 the 1.5× third holiday type, and **removal** of EL credits · 017 working-day-only
 leave ranges + retraction of approved leave · 018 `cancel_own_leave()` so employees
 can retract their own · 019 the `custom` holiday type carrying its own multiplier · 020 reverses 017’s
-holiday-inside-leave exemption.
+holiday-inside-leave exemption · 021 `holiday_off_hours` — premiums move to WORKED hours.
 
 ### Leave balances
 `vl_balance` / `sl_balance` on `profiles` hold **remaining days** (not the annual
@@ -151,11 +151,32 @@ never handed over — treat the **live Supabase schema as the source of truth**.
 **The single source of truth for invoice math.** Both the admin builder and the
 employee request flow call it. Change it and everything downstream follows.
 
-Per-day precedence — do not reorder:
+### The holiday rule (owner, 2026-09-14) — read this before touching holiday pay
+
 ```
-worked entry  >  approved leave  >  paid holiday  >  unpaid absence
+paid holiday, NOT worked  →  holiday.hours at the PLAIN rate      (holidayOffHours)
+paid holiday, WORKED      →  hours worked at that type’s premium  (the four holiday buckets)
+unpaid holiday, worked    →  plain rate, like any other day
 ```
-A day with an actual time entry never also gets leave/holiday hours credited.
+
+It used to be the other way round: the premium multiplied the *unworked* day,
+and working on a holiday earned nothing extra because the time entry simply won.
+HR: *“paid as normal pay if they did not clock in… if they clock in during a US
+holiday they are eligible for double.”* So **the four premium buckets
+(`holidayHours` / `specialHolidayHours` / `restDayHolidayHours` /
+`customHolidayHours`) hold hours WORKED on a holiday**, and the day off has a
+bucket of its own, `holidayOffHours`, paid at `rate` (migration 021). Every
+label says “WORKED” or “NOT WORKED” for this reason. Don’t move the premium
+back onto the unworked day.
+
+Invoices issued before 2026-09-14 were computed under the old model and stay
+as issued — a fresh recompute of one of those periods will legitimately differ,
+and the review banner will say so.
+
+Per-day precedence for a day with **no** entry — do not reorder:
+```
+approved leave  >  paid holiday  >  unpaid absence
+```
 
 ⚠️ **There is no exception for holidays.** Migration 017 briefly made a paid
 holiday inside approved leave pay as a HOLIDAY and keep the leave credit; HR
@@ -165,16 +186,22 @@ is consumed and it pays the plain rate, no premium. `leaveCoversDate()` checks
 `excludedDates` only. **Don’t re-add a holiday check there** without HR asking.
 
 - Full-day leave credits `STANDARD_DAY_HOURS` (8); partial-day credits its stored hours.
+- `workedHours` in the result is *every* hour worked, on any kind of day;
+  `regularHours` is the plain-rate subset. The context strip reads the first.
 - Hours above the employee's `capHours` become `excessHours` (shown, not billed).
 
 **Paid time off consumes the cap.** Approved leave *and* paid holidays come OUT
 of the cutoff's approved hours, not on top of them:
 
 ```
-paidTimeOff = leaveHours + holidayHours + specialHolidayHours + restDayHolidayHours
-billable    = min(worked, capHours - paidTimeOff)
-excess      = max(0, worked - (capHours - paidTimeOff))
+paidTimeOff = leaveHours + holidayOffHours + (every hours-WORKED-on-a-holiday bucket)
+billable    = min(ordinaryWorked, capHours - paidTimeOff)
+excess      = max(0, ordinaryWorked - (capHours - paidTimeOff))
 ```
+
+Hours worked on a holiday are real hours against the cap, so they sit in
+`paidTimeOff` too: 72 ordinary + 8 on a holiday fills an 80-hour cap exactly,
+and an 81st ordinary hour spills to excess.
 
 An 80-hour cutoff with one 8-hour VL day bills **72 regular + 8 leave = 80** —
 never 79 + 8 = 87. Before this rule the admin was correcting every such invoice
@@ -219,11 +246,10 @@ trimming them would misstate it. Only the room left for *worked* hours shrinks.
   inherit) → `org_settings` → the statutory constants. Per-person overrides
   remain on top of the three standard types.
 
-  `computeInvoice` returns all three buckets (`holidayHours` /
-  `specialHolidayHours` / `restDayHolidayHours`) with their rates already
-  multiplied out, and the invoice prints them as **separate rows** so each rate
-  is auditable. The first row is only labelled "REGULAR HOLIDAY" once another
-  bucket exists, so older invoices keep their original wording.
+  `computeInvoice` returns every bucket with its rate already multiplied out,
+  and the invoice prints them as **separate rows** so each rate is auditable.
+  Since 2026-09-14 those buckets are hours *worked* on the holiday — see
+  **The holiday rule** above.
 
   `approvedUnchanged` must compare **every** bucket. It once checked only the
   regular pair, so an admin editing just the special figures got a silent
