@@ -2186,6 +2186,12 @@
               <td><input type="number" id="ib-rst-holiday" step="0.25" min="0" oninput="onIbFieldChange('ib-rst-holiday')"></td>
               <td class="ib-amt" id="ib-rst-holiday-amt">—</td>
             </tr>
+            <tr id="ib-cst-row" style="display:none;">
+              <td class="lab">Special holiday <small style="font-weight:400; color:var(--ink-muted); display:block;">one-off rate &middot; set on the holiday itself</small></td>
+              <td class="mono" id="ib-cst-hol-rate-disp" style="color:var(--ink-muted); padding-left:10px;">—</td>
+              <td><input type="number" id="ib-cst-holiday" step="0.25" min="0" oninput="onIbFieldChange('ib-cst-holiday')" title="Hours at the one-off rate. Set to 0 if this person should not get it on this invoice."></td>
+              <td class="ib-amt" id="ib-cst-holiday-amt">—</td>
+            </tr>
             <tr class="ib-total-row">
               <td class="lab">Total</td>
               <td></td>
@@ -2225,6 +2231,12 @@
               <td style="width:90px;"><input type="number" id="ib-rst-holiday-m" step="0.25" min="0" oninput="onIbFieldChange('ib-rst-holiday-m')" title="Special holiday hours"></td>
               <td style="width:110px;"><input type="number" id="ib-rst-hol-rate-m" step="0.01" min="0" oninput="onIbFieldChange('ib-rst-hol-rate-m')" title="Auto-filled from the rest-day premium set for this employee."></td>
               <td class="ib-amt" id="ib-rst-holiday-m-amt">—</td>
+            </tr>
+            <tr id="ib-cst-row-m" style="display:none;">
+              <td class="lab">Special holiday <small style="font-weight:400; color:var(--ink-muted); display:block;">one-off rate &middot; set on the holiday itself</small></td>
+              <td style="width:90px;"><input type="number" id="ib-cst-holiday-m" step="0.25" min="0" oninput="onIbFieldChange('ib-cst-holiday-m')" title="Hours at the one-off rate. Set to 0 if this person should not get it on this invoice."></td>
+              <td class="mono" id="ib-cst-hol-rate-disp-m" style="width:110px; color:var(--ink-muted); padding-left:10px;">—</td>
+              <td class="ib-amt" id="ib-cst-holiday-m-amt">—</td>
             </tr>
             <tr>
               <td class="lab">Leave <small style="font-weight:400; color:var(--ink-muted); display:block;">VL/SL hrs × rate</small></td>
@@ -2329,6 +2341,11 @@
               <td class="lab">Special holiday <small style="font-weight:400; color:var(--ink-muted); display:block;">hrs &times; premium</small></td>
               <td><input type="number" id="eh-rst-holiday" step="0.25" min="0" oninput="onEhFieldChange()"></td>
               <td class="ib-amt" id="eh-rst-holiday-amt">—</td>
+            </tr>
+            <tr id="eh-cst-row" style="display:none;">
+              <td class="lab">Special holiday <small style="font-weight:400; color:var(--ink-muted); display:block;">one-off rate</small></td>
+              <td><input type="number" id="eh-cst-holiday" step="0.25" min="0" oninput="onEhFieldChange()"></td>
+              <td class="ib-amt" id="eh-cst-holiday-amt">—</td>
             </tr>
             <tr>
               <td class="lab">Leave <small style="font-weight:400; color:var(--ink-muted); display:block;">VL/SL</small></td>
@@ -7755,6 +7772,7 @@ function recomputeBuilder(reseed) {
       'ib-spc-holiday': computed.specialHolidayHours,
       'ib-rst-hol-rate': computed.restDayHolidayRate,
       'ib-rst-holiday': computed.restDayHolidayHours,
+      'ib-cst-holiday': computed.customHolidayHours || 0,
       'ib-leave': computed.leaveHours
     };
     for (const id in seedHourly) {
@@ -7781,6 +7799,7 @@ function recomputeBuilder(reseed) {
       'ib-spc-hol-rate-m': computed.specialHolidayRate,
       'ib-rst-holiday-m': computed.restDayHolidayHours,
       'ib-rst-hol-rate-m': computed.restDayHolidayRate,
+      'ib-cst-holiday-m': computed.customHolidayHours || 0,
       'ib-leave-m': computed.leaveHours,
       'ib-leave-rate-m': computed.rate
     };
@@ -7820,6 +7839,7 @@ function onIbFieldChange(field) {
     'ib-spc-holiday': c.specialHolidayHours,
     'ib-rst-hol-rate': c.restDayHolidayRate,
     'ib-rst-holiday': c.restDayHolidayHours,
+    'ib-cst-holiday': c.customHolidayHours || 0,
     'ib-leave': c.leaveHours,
     'ib-monthly-salary': salaryDefault,
     'ib-holiday-m': c.holidayHours,
@@ -7828,6 +7848,7 @@ function onIbFieldChange(field) {
     'ib-spc-hol-rate-m': c.specialHolidayRate,
     'ib-rst-holiday-m': c.restDayHolidayHours,
     'ib-rst-hol-rate-m': c.restDayHolidayRate,
+    'ib-cst-holiday-m': c.customHolidayHours || 0,
     'ib-leave-m': c.leaveHours,
     'ib-leave-rate-m': c.rate
   };
@@ -7862,7 +7883,10 @@ function refreshBuilderTotals() {
     const lvHrs = ibNum('ib-leave-m');
     const lvRate = ibNum('ib-leave-rate-m');
     const lvAmt = round2(lvHrs * lvRate);
-    const cstAmt = round2((c.customHolidayHours || 0) * (c.customHolidayRate || 0));
+    const cstHrs = ibNum('ib-cst-holiday-m');
+    const cstRate = round2(c.customHolidayRate || 0);
+    const cstAmt = round2(cstHrs * cstRate);
+    syncCustomHolidayRow('ib-cst-row-m', 'ib-cst-hol-rate-disp-m', 'ib-cst-holiday-m-amt', c, cstHrs, cstRate, cstAmt);
     total = round2(salary + holAmt + spcAmt + rstAmt + cstAmt + lvAmt + lineNet);
 
     document.getElementById('ib-monthly-salary-amt').textContent = currency(salary);
@@ -7892,7 +7916,10 @@ function refreshBuilderTotals() {
     const holAmt = round2(hol * holRate);
     const spcAmt = round2(spc * spcRate);
     const rstAmt = round2(rst * rstRate);
-    const cstAmt = round2((c.customHolidayHours || 0) * (c.customHolidayRate || 0));
+    const cst = ibNum('ib-cst-holiday');
+    const cstRate = round2(c.customHolidayRate || 0);
+    const cstAmt = round2(cst * cstRate);
+    syncCustomHolidayRow('ib-cst-row', 'ib-cst-hol-rate-disp', 'ib-cst-holiday-amt', c, cst, cstRate, cstAmt);
     total = round2(regAmt + otAmt + holAmt + spcAmt + rstAmt + cstAmt + lvAmt + lineNet);
 
     document.getElementById('ib-regular-amt').textContent = currency(regAmt);
@@ -7902,7 +7929,7 @@ function refreshBuilderTotals() {
     document.getElementById('ib-rst-holiday-amt').textContent = currency(rstAmt);
     document.getElementById('ib-leave-amt').textContent = currency(lvAmt);
     document.getElementById('ib-total-amt-hourly').textContent = currency(total);
-    document.getElementById('ib-total-hours-hourly').textContent = round2(reg + ot + hol + spc + rst + lv);
+    document.getElementById('ib-total-hours-hourly').textContent = round2(reg + ot + hol + spc + rst + cst + lv);
   }
 
   /* Context strip: what the raw data actually says, so an override is always
@@ -7926,6 +7953,19 @@ function refreshBuilderTotals() {
 
   const anyDirty = Object.values(IB.dirty).some(Boolean);
   document.getElementById('ib-dirty-note').style.display = anyDirty ? '' : 'none';
+}
+
+/* The one-off row only appears when there is something to show - a holiday
+ * at a one-off rate in this period, or hours the admin/employee typed. So
+ * invoices with no such holiday look exactly as they always did. The rate
+ * is shown, never typed: it belongs to the holiday, not the invoice. */
+function syncCustomHolidayRow(rowId, rateId, amtId, c, hrs, rate, amt) {
+  const row = document.getElementById(rowId);
+  if (!row) return;
+  const show = (c && c.customHolidayHours > 0) || hrs > 0;
+  row.style.display = show ? '' : 'none';
+  document.getElementById(rateId).textContent = show ? currency(rate) : '\u2014';
+  document.getElementById(amtId).textContent = show ? currency(amt) : '\u2014';
 }
 
 /* Hand the (possibly overridden) figures to the printable invoice. */
@@ -7959,8 +7999,9 @@ function buildInvoiceFromBuilder() {
     const rstHoliday = ibNum('ib-rst-holiday-m');
     const rstHolRate = ibNum('ib-rst-hol-rate-m');
     const rstHolAmt = round2(rstHoliday * rstHolRate);
-    /* Not typed anywhere - it comes from the holiday itself. */
-    const cstHoliday = round2(c.customHolidayHours || 0);
+    /* Hours are editable (an admin can zero them for one person); the rate
+     * is not - it belongs to the holiday. */
+    const cstHoliday = ibNum('ib-cst-holiday-m');
     const cstHolRate = round2(c.customHolidayRate || 0);
     const cstHolAmt = round2(cstHoliday * cstHolRate);
     /* Leave has its OWN rate now — never tied to Holiday's premium rate. */
@@ -8016,8 +8057,9 @@ function buildInvoiceFromBuilder() {
   const spcHoliday = ibNum('ib-spc-holiday');
   const rstHolRate = ibNum('ib-rst-hol-rate');
   const rstHoliday = ibNum('ib-rst-holiday');
-  /* Not typed anywhere - it comes from the holiday itself. */
-  const cstHoliday = round2((IB.computed && IB.computed.customHolidayHours) || 0);
+  /* Hours are editable (an admin can zero them for one person); the rate
+   * is not - it belongs to the holiday. */
+  const cstHoliday = ibNum('ib-cst-holiday');
   const cstHolRate = round2((IB.computed && IB.computed.customHolidayRate) || 0);
   const cstHolAmt = round2(cstHoliday * cstHolRate);
   const leave = ibNum('ib-leave');
@@ -8767,16 +8809,25 @@ function reviewRequestedInvoice(id) {
   const rateFmt = v => currency(v);
 
   if (i.payBasis === 'monthly') {
-    trackAndSet('ib-hol-rate-m', fresh.rate, i.holidayRate, 'Holiday rate', rateFmt);
+    /* Against fresh.holidayRate, not fresh.rate - comparing the saved holiday
+     * rate to the BASE rate flagged "375 -> 750" on every review where a
+     * premium applied, which is every review. */
+    trackAndSet('ib-hol-rate-m', fresh.holidayRate, i.holidayRate, 'Holiday rate', rateFmt);
     trackAndSet('ib-holiday-m', fresh.holidayHours, i.holidayHours, 'Holiday hours', hrsFmt);
+    trackAndSet('ib-spc-holiday-m', fresh.specialHolidayHours, i.specialHolidayHours || 0, 'Special non-working hours', hrsFmt);
+    trackAndSet('ib-rst-holiday-m', fresh.restDayHolidayHours, i.restDayHolidayHours || 0, 'Special holiday hours', hrsFmt);
+    trackAndSet('ib-cst-holiday-m', fresh.customHolidayHours || 0, i.customHolidayHours || 0, 'One-off holiday hours', hrsFmt);
     trackAndSet('ib-leave-rate-m', fresh.rate, i.rate, 'Leave rate', rateFmt);
     trackAndSet('ib-leave-m', fresh.leaveHours, i.leaveHours || 0, 'Leave hours', hrsFmt);
   } else {
     trackAndSet('ib-rate', fresh.rate, i.rate, 'Rate', rateFmt);
     trackAndSet('ib-regular', fresh.regularHours, i.regularHours, 'Regular hours', hrsFmt);
     trackAndSet('ib-overtime', fresh.overtimeHours, i.overtimeHours, 'Overtime hours', hrsFmt);
-    trackAndSet('ib-hol-rate', fresh.rate, i.holidayRate, 'Holiday rate', rateFmt);
+    trackAndSet('ib-hol-rate', fresh.holidayRate, i.holidayRate, 'Holiday rate', rateFmt);
     trackAndSet('ib-holiday', fresh.holidayHours, i.holidayHours, 'Holiday hours', hrsFmt);
+    trackAndSet('ib-spc-holiday', fresh.specialHolidayHours, i.specialHolidayHours || 0, 'Special non-working hours', hrsFmt);
+    trackAndSet('ib-rst-holiday', fresh.restDayHolidayHours, i.restDayHolidayHours || 0, 'Special holiday hours', hrsFmt);
+    trackAndSet('ib-cst-holiday', fresh.customHolidayHours || 0, i.customHolidayHours || 0, 'One-off holiday hours', hrsFmt);
     trackAndSet('ib-leave', fresh.leaveHours, i.leaveHours || 0, 'Leave hours', hrsFmt);
   }
 
@@ -9088,6 +9139,10 @@ function openEmpHoursModal(u, cyc) {
     document.getElementById('eh-spc-holiday').value = c.specialHolidayHours;
     const ehRst = document.getElementById('eh-rst-holiday');
     if (ehRst) ehRst.value = c.restDayHolidayHours;
+    const ehCst = document.getElementById('eh-cst-holiday');
+    if (ehCst) ehCst.value = c.customHolidayHours || 0;
+    const ehCstRow = document.getElementById('eh-cst-row');
+    if (ehCstRow) ehCstRow.style.display = (c.customHolidayHours > 0) ? '' : 'none';
     document.getElementById('eh-leave').value = c.leaveHours;
   }
 
@@ -9165,7 +9220,10 @@ function refreshEhTotals() {
     const spcHolAmt = round2(spcHol * c.specialHolidayRate);
     const rstHolAmt = round2(rstHol * c.restDayHolidayRate);
     const lvAmt = round2(lv * rate);
-    const cstHolAmt = round2((c.customHolidayHours || 0) * (c.customHolidayRate || 0));
+    const cstHol = ehNum('eh-cst-holiday');
+    const cstHolAmt = round2(cstHol * (c.customHolidayRate || 0));
+    const ehCstAmt = document.getElementById('eh-cst-holiday-amt');
+    if (ehCstAmt) ehCstAmt.textContent = currency(cstHolAmt);
     const total = round2(regAmt + otAmt + holAmt + spcHolAmt + rstHolAmt + cstHolAmt + lvAmt);
 
     document.getElementById('eh-regular-amt').textContent = currency(regAmt);
@@ -9234,8 +9292,8 @@ function continueToRequestPreview() {
     const spcHolAmt = round2(spcHoliday * c.specialHolidayRate);
     const rstHoliday = ehNum('eh-rst-holiday');
     const rstHolAmt = round2(rstHoliday * c.restDayHolidayRate);
-    /* Not editable here either - it is the holiday's own rate. */
-    const cstHoliday = round2(c.customHolidayHours || 0);
+    /* The rate is the holiday's own; the hours are theirs to correct. */
+    const cstHoliday = ehNum('eh-cst-holiday');
     const cstHolAmt = round2(cstHoliday * (c.customHolidayRate || 0));
     const leave = ehNum('eh-leave');
     const regAmt = round2(regular * c.rate);
