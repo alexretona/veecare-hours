@@ -2467,6 +2467,11 @@
 </div>
 
 <div class="toast" id="toast"></div>
+<div id="update-bar" style="display:none; position:fixed; left:0; right:0; bottom:0; z-index:9999; background:var(--vc-navy); color:#fff; padding:12px 18px; font-size:13px; align-items:center; justify-content:center; gap:14px; box-shadow:0 -2px 12px rgba(0,0,0,.25);">
+  <span>A newer version of the app is available. Reload to pick it up &mdash; what you see may be out of date.</span>
+  <button class="btn btn-sm" style="background:#fff; color:var(--vc-navy); border-color:#fff;" onclick="location.reload()">Reload now</button>
+  <button class="btn btn-ghost btn-sm" style="color:#fff; border-color:rgba(255,255,255,.5);" onclick="document.getElementById('update-bar').style.display='none'">Later</button>
+</div>
 
 <script>
 /* ============== DATA LAYER (Supabase) ==============
@@ -9778,6 +9783,29 @@ function tickClock() {
 setInterval(tickClock, 1000); tickClock();
 
 /* ============== BOOT ============== */
+/* ---- Stale-tab guard ----
+ * Compare the page's ETag now against the one it loaded with. A change
+ * means a deploy landed while this tab was open. Ask, never force. */
+const APP_VERSION_CHECK = (function () {
+  let loadedTag = null;
+  async function tag() {
+    try {
+      const r = await fetch(location.pathname || '/', { method: 'HEAD', cache: 'no-store' });
+      return r.headers.get('etag') || r.headers.get('last-modified') || null;
+    } catch (e) { return null; }
+  }
+  async function check() {
+    const t = await tag();
+    if (!t) return;
+    if (loadedTag === null) { loadedTag = t; return; }
+    if (t !== loadedTag) { const b = document.getElementById('update-bar'); if (b) b.style.display = 'flex'; }
+  }
+  check();
+  setInterval(check, 10 * 60 * 1000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
+  return { check };
+})();
+
 (async function boot() {
   /* A recovery link lands here with a valid session attached. Show the
    * "choose a new password" step instead of routing into the app - and do it
