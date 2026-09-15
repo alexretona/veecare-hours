@@ -5293,6 +5293,27 @@ async function refreshAdminData() {
   if (btn) { btn.disabled = false; btn.textContent = 'Refresh'; }
 }
 
+/* The overview is the one admin panel where staleness misleads within
+ * minutes - a shift someone just closed still reads as open. Refresh it
+ * quietly whenever the tab regains focus, and every five minutes while it
+ * is the pane on screen. Only the overview: the invoice builder and the
+ * holiday form hold typed input that a refresh would clobber. */
+function overviewIsOnScreen() {
+  const u = currentUser();
+  if (!u || u.role !== 'admin') return false;
+  const pane = document.querySelector('[data-admin-view-pane="overview"]');
+  return !!(pane && pane.classList.contains('active') && !document.hidden);
+}
+let OVERVIEW_REFRESHING = false;
+async function refreshOverviewQuietly() {
+  if (!overviewIsOnScreen() || OVERVIEW_REFRESHING) return;
+  OVERVIEW_REFRESHING = true;
+  try { await hydrate(); renderAdmin(); renderApprovals(); } catch (e) { /* next tick */ }
+  OVERVIEW_REFRESHING = false;
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) refreshOverviewQuietly(); });
+setInterval(refreshOverviewQuietly, 5 * 60 * 1000);
+
 function renderAdmin() {
   document.getElementById('admin-today').textContent = fmtFullDate(today()) + ' · Manila time';
   /* "Active accounts" — terminated staff are excluded from this headline count. */
