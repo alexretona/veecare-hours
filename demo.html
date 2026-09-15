@@ -4783,11 +4783,20 @@ async function clockOut() {
   btn.textContent = 'Clocking out...';
 
   const ts = nowISO();
-  const { error } = await sb.from('time_entries')
+  const { data: updated, error } = await sb.from('time_entries')
     .update({ clock_out: ts, status: 'completed' })
-    .eq('id', entry.id);
+    .eq('id', entry.id)
+    .select('id');
   if (error) {
     toast('Clock-out failed: ' + error.message);
+    btn.disabled = false;
+    btn.textContent = 'Clock out';
+    return;
+  }
+  /* No error and no row means nothing was saved - the shift would still be
+   * open on the next load while this screen claimed otherwise. */
+  if (!updated || updated.length === 0) {
+    toast('Clock-out did not save - your shift is still open. Refresh the page and try again; if it keeps happening, tell your admin.');
     btn.disabled = false;
     btn.textContent = 'Clock out';
     return;
@@ -5623,7 +5632,7 @@ async function submitForceClockOut() {
     return;
   }
 
-  if (!confirm(`Force clock out ${u ? u.name : 'this employee'} at ${fmtTime(clockOutIso, tz)} on ${fmtDate(zoneYmd(new Date(clockOutIso), tz), tz)}? This ends their shift and marks it complete.`)) return;
+  if (!(await appConfirm(`Force clock out ${u ? u.name : 'this employee'} at ${fmtTime(clockOutIso, tz)} on ${fmtDate(zoneYmd(new Date(clockOutIso), tz), tz)}? This ends their shift and marks it complete.`, { title: 'Force clock out', okLabel: 'Clock them out', danger: true }))) return;
 
   /* Close any still-open lunch or pause at the same moment, so the math
    * downstream (workedHours, payroll, invoices) is never left with a
@@ -5638,8 +5647,12 @@ async function submitForceClockOut() {
     patch.pauses = pauses;
   }
 
-  const { error } = await sb.from('time_entries').update(patch).eq('id', entryId);
+  const { data: updated, error } = await sb.from('time_entries').update(patch).eq('id', entryId).select('id');
   if (error) { toast('Force clock-out failed: ' + error.message); return; }
+  if (!updated || updated.length === 0) {
+    toast('Force clock-out did not save - the database rejected or could not find that shift. Press Refresh and try again; if it persists the row needs looking at directly.');
+    return;
+  }
 
   entry.clockOut = clockOutIso;
   entry.status = 'completed';
@@ -5780,7 +5793,7 @@ async function confirmTerminate() {
   const lastDay = document.getElementById('term-date').value || today();
   const reason = document.getElementById('term-reason').value.trim();
 
-  if (!confirm(`Terminate ${u.name}? This immediately revokes their access — they will not be able to sign in again unless reactivated.`)) return;
+  if (!(await appConfirm(`Terminate ${u.name}? This immediately revokes their access — they will not be able to sign in again unless reactivated.`, { title: 'Terminate employee', okLabel: 'Terminate', danger: true }))) return;
 
   /* Store the moment of termination itself (now), not the last-working-day
    * date — that's recorded in the reason/date fields for reference, but the
@@ -5807,7 +5820,7 @@ async function confirmTerminate() {
 async function reactivateEmployee(uid) {
   const u = D.users.find(x => x.id === uid);
   if (!u) return;
-  if (!confirm(`Reactivate ${u.name}? They'll be able to sign in again immediately.`)) return;
+  if (!(await appConfirm(`Reactivate ${u.name}? They'll be able to sign in again immediately.`, { title: 'Reactivate employee', okLabel: 'Reactivate' }))) return;
 
   const patch = { terminated_at: null, termination_reason: null, terminated_by: null };
   const { error } = await sb.from('profiles').update(patch).eq('id', uid);
@@ -5827,7 +5840,7 @@ async function toggleEmploymentStatus(uid) {
   if (!u) return;
   let patch;
   if (u.employmentStatus === 'Regular') {
-    if (!confirm(`Change ${u.name} back to Probationary? This will also disable their leaves.`)) return;
+    if (!(await appConfirm(`Change ${u.name} back to Probationary? This will also disable their leaves.`, { title: 'Change to Probationary', okLabel: 'Change status', danger: true }))) return;
     patch = { employment_status: 'Probationary', leaves_enabled: false };
   } else {
     patch = { employment_status: 'Regular' };
@@ -5891,7 +5904,7 @@ async function toggleFlexEnabled(uid) {
   const u = D.users.find(x => x.id===uid);
   if (!u) return;
   const turningOn = !u.flexEnabled;
-  if (!turningOn && !confirm(`Disable flexible hours for ${u.name}? They will no longer be able to pause their shift. Past records are unchanged.`)) return;
+  if (!turningOn && !(await appConfirm(`Disable flexible hours for ${u.name}? They will no longer be able to pause their shift. Past records are unchanged.`, { title: 'Disable flexible hours', okLabel: 'Disable' }))) return;
 
   const { error } = await sb.from('profiles').update({ flex_enabled: turningOn }).eq('id', uid);
   if (error) { toast('Update failed: ' + error.message); return; }
@@ -7640,7 +7653,7 @@ async function saveHoliday() {
 async function deleteHoliday(id) {
   const h = D.holidays.find(x => x.id === id);
   if (!h) return;
-  if (!confirm(`Remove "${h.name}" on ${fmtDate(h.date)}? Days that were tagged Holiday will go back to being tagged Absent.`)) return;
+  if (!(await appConfirm(`Remove "${h.name}" on ${fmtDate(h.date)}? Days that were tagged Holiday will go back to being tagged Absent.`, { title: 'Remove holiday', okLabel: 'Remove', danger: true }))) return;
   const { error } = await sb.from('holidays').delete().eq('id', id);
   if (error) { toast('Delete failed: ' + error.message); return; }
   D.holidays = D.holidays.filter(x => x.id !== id);
@@ -8931,7 +8944,7 @@ async function saveInvoice() {
   const dupe = D.invoices.find(i =>
     i.userId === inv.user.id && i.periodStart === inv.start && i.periodEnd === inv.end
   );
-  if (dupe && !confirm(`An invoice (#${dupe.invoiceNo}) already exists for ${inv.user.name} covering this exact period. Save another anyway?`)) return;
+  if (dupe && !(await appConfirm(`An invoice (#${dupe.invoiceNo}) already exists for ${inv.user.name} covering this exact period. Save another anyway?`, { title: 'Duplicate period', okLabel: 'Save anyway' }))) return;
 
   const invoicePayload = {
     invoice_no: invoiceNo,
@@ -9208,7 +9221,7 @@ async function sendInvoice(id) {
   const i = D.invoices.find(x => x.id === id);
   if (!i) return;
   const u = D.users.find(x => x.id === i.userId);
-  if (!confirm(`Send invoice #${i.invoiceNo} to ${u ? u.name : 'the employee'}? They'll be able to view it and either acknowledge or dispute it.`)) return;
+  if (!(await appConfirm(`Send invoice #${i.invoiceNo} to ${u ? u.name : 'the employee'}? They'll be able to view it and either acknowledge or dispute it.`, { title: 'Send invoice', okLabel: 'Send' }))) return;
 
   const patch = {
     workflow: 'sent',
@@ -9896,7 +9909,7 @@ function renderEmpInvoices() {
 async function acknowledgeInvoice(id) {
   const i = D.invoices.find(x => x.id === id);
   if (!i) return;
-  if (!confirm(`Acknowledge invoice #${i.invoiceNo} as correct? This confirms the invoice is in good form.`)) return;
+  if (!(await appConfirm(`Acknowledge invoice #${i.invoiceNo} as correct? This confirms the invoice is in good form.`, { title: "Acknowledge invoice", okLabel: "Acknowledge" }))) return;
   const patch = { workflow: 'acknowledged', acknowledged_at: new Date().toISOString() };
   const { error } = await sb.from('invoices').update(patch).eq('id', id);
   if (error) { toast('Could not acknowledge: ' + error.message); return; }
@@ -9946,7 +9959,7 @@ async function toggleInvoiceStatus(id) {
 async function deleteInvoice(id) {
   const i = D.invoices.find(x => x.id === id);
   if (!i) return;
-  if (!confirm(`Delete invoice #${i.invoiceNo}? This cannot be undone.`)) return;
+  if (!(await appConfirm(`Delete invoice #${i.invoiceNo}? This cannot be undone.`, { title: "Delete invoice", okLabel: "Delete", danger: true }))) return;
   const { error } = await sb.from('invoices').delete().eq('id', id);
   if (error) { toast('Delete failed: ' + error.message); return; }
   D.invoices = D.invoices.filter(x => x.id !== id);
