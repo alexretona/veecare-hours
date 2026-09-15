@@ -5338,7 +5338,7 @@ function renderAdmin() {
         <td>${u.name}${onLunchBadge}${pausedBadge}${staleBadge}${overdueBadge}</td>
         <td class="mono">${fmtTime(e.clockIn)}</td>
         <td class="mono">${dur} hrs</td>
-        <td><span class="badge in">${isPaused(e) ? 'Paused' : 'Active'}</span></td>
+        <td>${isStaleOpenEntry(e) ? '<span class="badge rejected">Unfinished</span>' : `<span class="badge in">${isPaused(e) ? 'Paused' : 'Active'}</span>`}</td>
         <td><button class="btn btn-ghost btn-sm" onclick="openForceClockOutModal('${e.id}')">Force clock out</button></td>
       </tr>`;
     }).join('');
@@ -5385,8 +5385,15 @@ function openForceClockOutModal(entryId) {
   document.getElementById('fco-emp-name').textContent = u ? u.name : 'Employee';
 
   const nowTs = nowISO();
-  document.getElementById('fco-date').value = zoneYmd(new Date(nowTs), tz);
-  document.getElementById('fco-time').value = isoToZoneHHMM(nowTs, tz);
+  /* A shift nobody closed for days must NOT default to "now" - that would
+   * record the whole gap as hours worked. Default it to a standard day after
+   * clock-in; the admin corrects it to the real time if they know it. */
+  const stale = isStaleOpenEntry(entry);
+  const defTs = stale
+    ? new Date(new Date(entry.clockIn).getTime() + STANDARD_DAY_HOURS * 3600000).toISOString()
+    : nowTs;
+  document.getElementById('fco-date').value = zoneYmd(new Date(defTs), tz);
+  document.getElementById('fco-time').value = isoToZoneHHMM(defTs, tz);
 
   let elapsed = hoursBetween(entry.clockIn, nowTs);
   if (entry.lunchStart && entry.lunchEnd) elapsed -= lunchMinutes(entry) / 60;
@@ -5395,7 +5402,8 @@ function openForceClockOutModal(entryId) {
   if (isPaused(entry)) elapsed -= openPauseMinutes(entry) / 60;
 
   document.getElementById('fco-info').innerHTML =
-    `Clocked in ${fmtTime(entry.clockIn, tz)} ${tzLabel(tz)} on ${fmtDate(entry.date, tz)} — shown in this employee's own timezone · ${round2(Math.max(0, elapsed))} hrs elapsed so far`;
+    `Clocked in ${fmtTime(entry.clockIn, tz)} ${tzLabel(tz)} on ${fmtDate(entry.date, tz)} — shown in this employee's own timezone · ${round2(Math.max(0, elapsed))} hrs elapsed so far` +
+    (stale ? `<br><strong style="color:var(--danger);">This shift was never closed.</strong> The end time below defaults to ${STANDARD_DAY_HOURS} hrs after clock-in, not now — set it to when they actually finished, or those ${round2(elapsed)} hrs land on their invoice.` : '');
 
   const openNote = document.getElementById('fco-open-warning');
   if (entry.lunchStart && !entry.lunchEnd) {
