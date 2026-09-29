@@ -389,6 +389,12 @@ anything interactive.
 The button gets `.active` styling while filtering. A narrowed table that looks
 identical to a full one is how “missing data” reports start.
 
+Every list of people is sorted through **`byName`** — one comparator, so no two
+screens disagree about the order. Case- and accent-insensitive, and numeric.
+Applied to the timesheet filter, the holiday "Applies to" list, the Employees
+table, payroll rows, current cutoffs and the payroll picker. Adding a new list
+of names? Sort it with `byName` rather than leaving it in hydrate order.
+
 To add one: markup `.multi` wrapper + `<id>-btn` + `<id>-panel`, then
 `initMultiFilter(id, { allLabel, noun, options, onChange })`.
 

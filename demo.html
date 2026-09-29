@@ -5804,6 +5804,7 @@ function renderEmployeesTable() {
    * up for historical reference under the Terminated filter. */
   if (EMP_FILTER === 'active') employees = employees.filter(u => !u.terminatedAt);
   else if (EMP_FILTER === 'terminated') employees = employees.filter(u => !!u.terminatedAt);
+  employees = employees.slice().sort(byName);
 
   const p = periodRange('this-month');
   const tbody = document.getElementById('employees-table');
@@ -6397,11 +6398,20 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeAllMultiPanels();
 });
 
+/* One comparator for every list of people, so no two screens disagree about
+ * the order. Case- and accent-insensitive, and numeric so a "Maria 2" sorts
+ * after "Maria 1" rather than before it. */
+function byName(a, b) {
+  return String((a && a.name) || '').localeCompare(String((b && b.name) || ''),
+    undefined, { sensitivity: 'base', numeric: true });
+}
+
 function populateEmpFilter() {
   /* Terminated employees are left off this picker-by-name — "All employees"
    * still surfaces their historical entries, since that's a data view, not
    * a roster. */
-  const employees = D.users.filter(u => u.role==='employee' && !u.terminatedAt);
+  const employees = D.users.filter(u => u.role==='employee' && !u.terminatedAt)
+    .slice().sort(byName);
   const options = employees.map(u => ({ value: u.id, label: u.name }));
   if (!MULTI['admin-ts-emp']) {
     initMultiFilter('admin-ts-emp', {
@@ -7592,7 +7602,7 @@ function buildPayrollEmpMenu() {
    * filtered by employment status), this just keeps the picker itself
    * focused on who's currently on the team. */
   const employees = D.users.filter(u => u.role === 'employee' && !u.terminatedAt)
-    .slice().sort((a, b) => a.name.localeCompare(b.name));
+    .slice().sort(byName);
   if (employees.length === 0) {
     list.innerHTML = '<div class="empty" style="padding:14px;">No employees.</div>';
     return;
@@ -7659,6 +7669,7 @@ function payrollData() {
   if (PAYROLL_EMP_FILTER.size > 0) {
     employees = employees.filter(u => PAYROLL_EMP_FILTER.has(u.id));
   }
+  employees = employees.slice().sort(byName);
   return employees.map(u => {
     const entries = D.entries.filter(e => e.userId===u.id && e.status==='completed' && e.date>=p.start && e.date<=p.end);
     const hrs = entries.reduce((s,e)=>s+workedHours(e),0);
@@ -7806,7 +7817,8 @@ function populateHolidayEmpSelect() {
   const box = document.getElementById('hol-user-list');
   if (!box) return;
   /* A terminated employee doesn't need a future holiday declared for them. */
-  const employees = D.users.filter(u => u.role === 'employee' && !u.terminatedAt);
+  const employees = D.users.filter(u => u.role === 'employee' && !u.terminatedAt)
+    .slice().sort(byName);
   const row = (id, label, cls) =>
     '<label style="display:flex; align-items:center; gap:8px; padding:4px 0; font-size:13px; cursor:pointer;' +
     /* .field label uppercases everything inside it, which turned people’s
@@ -8109,7 +8121,8 @@ function renderCutoffs() {
   /* Only active employees get a "what would I invoice right now" preview —
    * invoice HISTORY (below) is untouched, so past invoices for someone since
    * terminated still show up there. */
-  const employees = D.users.filter(u => u.role === 'employee' && !u.terminatedAt);
+  const employees = D.users.filter(u => u.role === 'employee' && !u.terminatedAt)
+    .slice().sort(byName);
   if (employees.length === 0) { tbody.innerHTML = '<tr><td colspan="7" class="empty">No active employees.</td></tr>'; return; }
 
   tbody.innerHTML = employees.map(u => {

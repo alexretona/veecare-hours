@@ -28,6 +28,14 @@ setTimeout(async () => {
     const rows = () => w.document.querySelectorAll('#admin-ts-rows tr').length;
     const ID = 'admin-ts-emp';
 
+    // ---------- names are listed alphabetically ----------
+    const labels = [...w.document.querySelectorAll('#' + ID + '-panel .multi-opt:not(.multi-all) span')]
+      .map(s => s.textContent.trim());
+    const sorted = labels.slice().sort((a, b) =>
+      a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true }));
+    check('0a. the picker lists names alphabetically', labels, sorted);
+    check('0b. and lists every active employee', labels.length, emps.length);
+
     // ---------- default: everything ticked ----------
     const all = rows();
     check('1. everything is ticked by default', w.multiValues(ID).length, emps.length);
