@@ -322,6 +322,31 @@ A cutoff is invoiceable when the WORK is done, not when the calendar says so:
 There is **no realtime subscription** anywhere in this app. Every admin panel is
 a page-load snapshot; that is why the overview has a Refresh button.
 
+### Never read a growing table without paging
+
+PostgREST caps a single response at `db-max-rows` — **1000 on Supabase by
+default** — and returns the cap **silently**: no error, no flag, just fewer rows
+than exist. `hydrate()` fetched every time entry in one `.select()`, so the day
+`time_entries` crossed 1000 the app began losing rows. Because Postgres returns
+rows in roughly insertion order without an `ORDER BY`, the ones lost were the
+**newest** — every old screen rendered perfectly while the most recent days
+quietly disappeared. It surfaced as *"we can’t see last Friday and Monday"*,
+which sounds like a filter bug and is not.
+
+Every collection read goes through **`fetchAllRows(build, label)`**, which pages
+in 1000-row chunks until a short page comes back. Two things matter:
+
+- `build` must return a **fresh** query each call (a PostgREST builder is
+  single-use).
+- It appends `.order(id)` so paging is deterministic. Without a stable sort,
+  pages can skip or repeat rows — worse than truncation, because it looks fine.
+
+`demo.html`’s mock implements `range()` for the same reason: a mock that ignored
+it would stop after one page and reproduce the very bug this prevents.
+
+⚠️ Adding a new `.select()` over a whole table? Wrap it in `fetchAllRows`. The
+failure mode is silent, gradual, and always hits the newest data first.
+
 ## Hard-won gotchas (these were real bugs — don't reintroduce)
 
 1. **Admin review must load the SUBMITTED values, not a fresh recompute.**

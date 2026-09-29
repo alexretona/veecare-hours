@@ -2525,6 +2525,7 @@ function mockFrom(table) {
     _single: false,
     _maybeSingle: false,
     _limit: null,
+    _range: null,
     _orderCol: null,
     _orderAsc: true,
 
@@ -2545,6 +2546,10 @@ function mockFrom(table) {
       return q;
     },
     limit(n) { q._limit = n; return q; },
+    /* Mirrors PostgREST: inclusive from..to. The real client is paged by
+     * fetchAllRows(), so the mock has to honour it or the demo would stop
+     * after one page - reproducing the bug this exists to prevent. */
+    range(from, to) { q._range = [from, to]; return q; },
     single() { q._single = true; return q; },
     /* Like .single(), but "no rows" is a normal empty result rather than an
      * error — matches real Supabase's .maybeSingle() closely enough for the
@@ -2588,6 +2593,7 @@ function mockFrom(table) {
               return asc ? cmp : -cmp;
             });
           }
+          if (q._range) hits = hits.slice(q._range[0], q._range[1] + 1);
           if (q._limit !== null) hits = hits.slice(0, q._limit);
           data = wantsOne ? (hits[0] || null) : hits;
         }
@@ -2999,17 +3005,47 @@ function coaFromRow(r) {
  * RLS scopes the result automatically: employees get their own rows,
  * the admin gets all rows. We load into the same cache shape the UI expects.
  */
+/* ---- Paged collection read ----
+ * PostgREST caps one response at `db-max-rows` (1000 on Supabase by default)
+ * and says nothing about it: no error, no flag, just fewer rows than exist.
+ * A plain .select() on a table that grows forever therefore starts losing
+ * data the day it crosses the cap, and because rows come back in insertion
+ * order it loses the NEWEST ones - the app looks fine except that recent
+ * days quietly vanish. That is exactly how this surfaced.
+ *
+ * `build` must return a fresh query each call; .order() makes the paging
+ * deterministic, without which pages can skip or repeat rows. */
+const HYDRATE_PAGE = 1000;
+async function fetchAllRows(build, label) {
+  const out = [];
+  for (let from = 0; ; from += HYDRATE_PAGE) {
+    const { data, error } = await build()
+      .order('id', { ascending: true })
+      .range(from, from + HYDRATE_PAGE - 1);
+    if (error) return { data: null, error };
+    const page = data || [];
+    out.push.apply(out, page);
+    if (page.length < HYDRATE_PAGE) break;
+    /* Runaway guard: a build() that ignores .range() would loop forever. */
+    if (out.length >= 500000) {
+      console.warn('fetchAllRows: stopping at ' + out.length + ' rows for ' + (label || 'table'));
+      break;
+    }
+  }
+  return { data: out, error: null };
+}
+
 async function hydrate() {
   const [profilesRes, entriesRes, leavesRes, coasRes, holsRes, invRes, liRes, orgRes, snapRes] = await Promise.all([
-    sb.from('profiles').select('*'),
-    sb.from('time_entries').select('*').is('deleted_at', null),
-    sb.from('leave_requests').select('*'),
-    sb.from('coa_requests').select('*'),
-    sb.from('holidays').select('*'),
-    sb.from('invoices').select('*'),
-    sb.from('invoice_line_items').select('*'),
+    fetchAllRows(() => sb.from('profiles').select('*'), 'profiles'),
+    fetchAllRows(() => sb.from('time_entries').select('*').is('deleted_at', null), 'time_entries'),
+    fetchAllRows(() => sb.from('leave_requests').select('*'), 'leave_requests'),
+    fetchAllRows(() => sb.from('coa_requests').select('*'), 'coa_requests'),
+    fetchAllRows(() => sb.from('holidays').select('*'), 'holidays'),
+    fetchAllRows(() => sb.from('invoices').select('*'), 'invoices'),
+    fetchAllRows(() => sb.from('invoice_line_items').select('*'), 'invoice_line_items'),
     sb.from('org_settings').select('*').limit(1).maybeSingle(),
-    sb.from('leave_year_snapshots').select('*')
+    fetchAllRows(() => sb.from('leave_year_snapshots').select('*'), 'leave_year_snapshots')
   ]);
   if (profilesRes.error) throw profilesRes.error;
   if (entriesRes.error) throw entriesRes.error;
@@ -9297,8 +9333,8 @@ async function refreshMyInvoices() {
   if (btn) { btn.disabled = true; btn.textContent = 'Refreshing…'; }
   try {
     const [invRes, liRes] = await Promise.all([
-      sb.from('invoices').select('*'),
-      sb.from('invoice_line_items').select('*')
+      fetchAllRows(() => sb.from('invoices').select('*'), 'invoices'),
+      fetchAllRows(() => sb.from('invoice_line_items').select('*'), 'invoice_line_items')
     ]);
     if (invRes.error) { toast('Could not refresh invoices: ' + invRes.error.message); return; }
     D.invoices = (invRes.data || []).map(invoiceFromRow);
