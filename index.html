@@ -772,6 +772,13 @@
     background: var(--accent-soft);
     font-weight: 600;
   }
+  /* Nothing ticked hides every row, so it has to look deliberate. */
+  .multi-btn.empty {
+    border-color: var(--vc-orange);
+    background: var(--warn-soft);
+    color: var(--warn);
+    font-weight: 600;
+  }
   .multi-panel {
     position: absolute; z-index: 60; top: calc(100% + 4px); left: 0;
     min-width: 240px; max-height: 300px; overflow-y: auto;
@@ -6017,13 +6024,23 @@ async function addEmployee() {
  * <select> filter. Built once here so a new filter is a one-line call rather
  * than another hand-rolled dropdown.
  *
- * The value semantics are what make this a safe swap: an EMPTY selection means
- * "all", so every caller keeps its existing "no filter" branch and nothing
- * downstream has to learn about arrays. `multiValues(id)` returns [] for all.
+ * The selection IS the filter - there is no special meaning for empty.
+ * Everything ticked shows everything (the default); nothing ticked shows
+ * nothing, and the button says "None selected" so an empty table never reads
+ * as lost data. `multiValues(id)` returns exactly what is ticked.
  *
  * State lives in MULTI[id] rather than the DOM, because the option list is
  * re-rendered whenever the roster changes (populateEmpFilter) and a selection
  * must survive that. */
+/* Escape text for insertion into markup or an attribute. Names come from the
+ * database and can contain quotes or ampersands. */
+function escAttr(s) {
+  return String(s === null || s === undefined ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
 const MULTI = {};
 
 function initMultiFilter(id, cfg) {
@@ -6031,7 +6048,8 @@ function initMultiFilter(id, cfg) {
     allLabel: cfg.allLabel,
     noun: cfg.noun || 'selected',
     options: cfg.options || [],
-    selected: MULTI[id] ? MULTI[id].selected : [],
+    /* Default: everything ticked, so the first render shows the whole table. */
+    selected: MULTI[id] ? MULTI[id].selected : (cfg.options || []).map(o => o.value),
     onChange: cfg.onChange
   };
   renderMultiFilter(id);
@@ -6043,21 +6061,31 @@ function initMultiFilter(id, cfg) {
 function setMultiOptions(id, options) {
   const m = MULTI[id];
   if (!m) return;
+  /* If everything was selected, keep it that way - otherwise a newly hired
+   * employee would be silently left out of a filter that reads "All". */
+  const wasAll = m.options.length > 0 && m.selected.length === m.options.length;
   const valid = new Set(options.map(o => o.value));
   m.options = options;
-  m.selected = m.selected.filter(v => valid.has(v));
+  m.selected = wasAll ? options.map(o => o.value) : m.selected.filter(v => valid.has(v));
   renderMultiFilter(id);
 }
 
-/* [] means every option — the caller's "no filter" case. */
+/* Exactly what is ticked. [] means nothing is selected, not everything. */
 function multiValues(id) {
   const m = MULTI[id];
   return m ? m.selected.slice() : [];
 }
 
+function multiIsAll(id) {
+  const m = MULTI[id];
+  return !!m && m.options.length > 0 && m.selected.length === m.options.length;
+}
+
 function multiLabel(id) {
   const m = MULTI[id];
-  if (!m || m.selected.length === 0) return m ? m.allLabel : '';
+  if (!m) return '';
+  if (multiIsAll(id)) return m.allLabel;
+  if (m.selected.length === 0) return 'None selected';
   if (m.selected.length === 1) {
     const one = m.options.find(o => o.value === m.selected[0]);
     return one ? one.label : m.allLabel;
@@ -6065,32 +6093,71 @@ function multiLabel(id) {
   return m.selected.length + ' ' + m.noun;
 }
 
-function renderMultiFilter(id) {
+/* Everything that can change WITHOUT rebuilding the list. Called on every
+ * toggle, so the option nodes - and with them the panel scroll position and
+ * the focused checkbox - survive untouched. */
+function syncMultiFilter(id) {
   const m = MULTI[id];
   const btn = document.getElementById(id + '-btn');
   const panel = document.getElementById(id + '-panel');
   if (!m || !btn || !panel) return;
 
   btn.textContent = multiLabel(id);
-  btn.classList.toggle('active', m.selected.length > 0);
+  /* Only a strict subset is "filtering" - everything ticked is the normal
+   * state, and nothing ticked gets its own warning look so an empty table
+   * is obviously a filter and not lost data. */
+  btn.classList.toggle('active', !multiIsAll(id) && m.selected.length > 0);
+  btn.classList.toggle('empty', m.selected.length === 0);
   btn.setAttribute('aria-expanded', panel.hidden ? 'false' : 'true');
 
+  const allCb = panel.querySelector('.multi-all input');
+  if (allCb) allCb.checked = multiIsAll(id);
+}
+
+/* Rebuilds the option list. Only for init and roster changes - never on a
+ * toggle, or the clicked checkbox is replaced mid-interaction. */
+function renderMultiFilter(id) {
+  const m = MULTI[id];
+  const panel = document.getElementById(id + '-panel');
+  if (!m || !panel) return;
+
+  /* The option value goes in a data attribute, NOT an inline onchange. The
+   * first version built the handler as
+   *     onchange="onMultiToggle('id', JSON.stringify(value), ...)"
+   * and JSON.stringify emits DOUBLE quotes, which closed the double-quoted
+   * HTML attribute early. The handler was malformed, so clicking a checkbox
+   * ticked the box and changed nothing - it only ever worked when called from
+   * script. A delegated listener (see below) sidesteps quoting entirely. */
   const row = (value, label) => {
     const on = m.selected.indexOf(value) !== -1;
     return '<label class="multi-opt">' +
-      '<input type="checkbox"' + (on ? ' checked' : '') +
-      ' onchange="onMultiToggle(\'' + id + '\', ' + JSON.stringify(value) + ', this.checked)">' +
-      '<span>' + label + '</span></label>';
+      '<input type="checkbox" data-multi-value="' + escAttr(value) + '"' + (on ? ' checked' : '') + '>' +
+      '<span>' + escAttr(label) + '</span></label>';
   };
 
   panel.innerHTML =
     '<label class="multi-opt multi-all">' +
-    '<input type="checkbox"' + (m.selected.length === 0 ? ' checked' : '') +
-    ' onchange="clearMultiFilter(\'' + id + '\')">' +
-    '<span><strong>' + m.allLabel + '</strong></span></label>' +
+    '<input type="checkbox"' + (multiIsAll(id) ? ' checked' : '') + '>' +
+    '<span><strong>' + escAttr(m.allLabel) + '</strong></span></label>' +
     '<div class="multi-sep"></div>' +
     m.options.map(o => row(o.value, o.label)).join('');
+
+  syncMultiFilter(id);
 }
+
+/* One listener for every multi-select filter, present or future. Delegated so
+ * it survives the list being rebuilt, and so no option value is ever
+ * interpolated into markup. */
+document.addEventListener('change', e => {
+  const input = e.target;
+  if (!input || !input.matches || !input.matches('.multi-panel input[type="checkbox"]')) return;
+  const panel = input.closest('.multi-panel');
+  const opt = input.closest('.multi-opt');
+  if (!panel || !opt) return;
+  const id = panel.id.replace(/-panel$/, '');
+  if (opt.classList.contains('multi-all')) setMultiAll(id, input.checked);
+  else onMultiToggle(id, input.getAttribute('data-multi-value'), input.checked);
+});
 
 function onMultiToggle(id, value, checked) {
   const m = MULTI[id];
@@ -6098,27 +6165,38 @@ function onMultiToggle(id, value, checked) {
   const i = m.selected.indexOf(value);
   if (checked) { if (i === -1) m.selected.push(value); }
   else if (i !== -1) m.selected.splice(i, 1);
-  renderMultiFilter(id);
+  /* NOT renderMultiFilter - see syncMultiFilter. Rebuilding here replaced
+   * the checkbox being clicked, which reset the scroll and lost focus. */
+  syncMultiFilter(id);
   if (m.onChange) m.onChange();
 }
 
-/* Ticking "All" is the way back to no filter — clearing the list rather than
- * selecting every option, so a newly added employee is included automatically
- * instead of being silently left out of an "everyone" that was frozen. */
-function clearMultiFilter(id) {
+/* Tick "All" to select every option, untick it to clear them. Unticking is
+ * the quick way to then pick one or two from a long roster. */
+function setMultiAll(id, checked) {
   const m = MULTI[id];
   if (!m) return;
-  m.selected = [];
-  renderMultiFilter(id);
+  m.selected = checked ? m.options.map(o => o.value) : [];
+  /* Tick the existing boxes rather than rebuilding the list, for the same
+   * reason as onMultiToggle. */
+  const panel = document.getElementById(id + '-panel');
+  if (panel) {
+    panel.querySelectorAll('.multi-opt:not(.multi-all) input')
+      .forEach(cb => { cb.checked = checked; });
+  }
+  syncMultiFilter(id);
   if (m.onChange) m.onChange();
 }
+
+/* Kept as the name for "show everything again". */
+function clearMultiFilter(id) { setMultiAll(id, true); }
 
 function toggleMultiPanel(id) {
   const panel = document.getElementById(id + '-panel');
   if (!panel) return;
   const wasOpen = !panel.hidden;
   closeAllMultiPanels();
-  if (!wasOpen) { panel.hidden = false; renderMultiFilter(id); }
+  if (!wasOpen) { panel.hidden = false; syncMultiFilter(id); }
 }
 
 function closeAllMultiPanels() {
@@ -6128,6 +6206,7 @@ function closeAllMultiPanels() {
     if (btn) btn.setAttribute('aria-expanded', 'false');
   });
 }
+
 
 /* Click anywhere else, or Escape, closes the open panel. Without this the
  * panel sits over the table and looks stuck. */
@@ -6169,15 +6248,17 @@ function onAdminTsPeriodChange() {
 }
 
 function renderAdminTimesheets() {
-  /* [] means everyone - see multiValues(). */
+  /* The ticked set IS the filter - no special case for empty. The picker
+   * only lists non-terminated employees, so "all ticked" already leaves them
+   * out; the guard below still runs, for a selection made before someone was
+   * terminated. */
   const picked = multiValues('admin-ts-emp');
   const periodKey = document.getElementById('admin-ts-period').value;
   const p = periodRange(periodKey);
 
   let entries = D.entries.filter(e => e.status==='completed' && e.date>=p.start && e.date<=p.end);
-  if (picked.length) {
-    entries = entries.filter(e => picked.indexOf(e.userId) !== -1);
-  } else {
+  entries = entries.filter(e => picked.indexOf(e.userId) !== -1);
+  {
     /* "All employees" excludes terminated staff entirely, not just from the
      * name picker — they're a closed chapter, and mixing their entries into
      * the everyday aggregate view is exactly the clutter this was meant to
@@ -6192,9 +6273,7 @@ function renderAdminTimesheets() {
   let onLeaveRows = [];
   let holidayRows = [];
   const workingDays = (periodKey === 'all') ? [] : getWorkingDaysInRange(p.start, p.end);
-  const targetEmployees = picked.length
-    ? D.users.filter(u => picked.indexOf(u.id) !== -1)
-    : D.users.filter(u => u.role === 'employee' && !u.terminatedAt);
+  const targetEmployees = D.users.filter(u => picked.indexOf(u.id) !== -1);
 
   for (const u of targetEmployees) {
     const userEntryDates = new Set(entries.filter(e => e.userId===u.id).map(e=>e.date));
@@ -6242,7 +6321,14 @@ function renderAdminTimesheets() {
   allRows.sort((a,b) => b.date.localeCompare(a.date) || (a.userName||a.user?.name||'').localeCompare(b.userName||b.user?.name||''));
 
   const tbody = document.getElementById('admin-ts-rows');
-  if (allRows.length === 0) { tbody.innerHTML = '<tr><td colspan="7" class="empty">No entries.</td></tr>'; return; }
+  if (allRows.length === 0) {
+    /* Distinguish "nothing matches" from "you have unticked everyone" - the
+     * second one looks identical and is what gets reported as missing data. */
+    tbody.innerHTML = picked.length
+      ? '<tr><td colspan="7" class="empty">No entries.</td></tr>'
+      : '<tr><td colspan="7" class="empty">No employees selected &mdash; tick at least one in the filter above.</td></tr>';
+    return;
+  }
 
   tbody.innerHTML = allRows.map(r => {
     if (r.type === 'absent') {
@@ -6364,12 +6450,12 @@ function exportTimesheetCSV() {
   const periodKey = document.getElementById('admin-ts-period').value;
   const p = periodRange(periodKey);
   let entries = D.entries.filter(e => e.status==='completed' && e.date>=p.start && e.date<=p.end);
-  if (picked.length) entries = entries.filter(e => picked.indexOf(e.userId) !== -1);
+  entries = entries.filter(e => picked.indexOf(e.userId) !== -1);
   entries.sort((a,b)=>b.date.localeCompare(a.date));
   if (entries.length === 0) { toast('No entries to export'); return; }
   /* One name reads as a name; several read as a count, so the file is still
    * identifiable without a 200-character filename. */
-  const empLabel = !picked.length
+  const empLabel = multiIsAll('admin-ts-emp')
     ? 'All Employees'
     : (picked.length === 1
         ? ((D.users.find(x => x.id === picked[0]) || {}).name || picked[0])
@@ -7118,7 +7204,7 @@ function renderLeaveHistory() {
   const tbody = document.getElementById('leave-history-rows');
   if (!tbody) return;
   let decided = D.leaves.filter(l => l.status !== 'pending');
-  if (picked.length) decided = decided.filter(l => picked.indexOf(l.status) !== -1);
+  decided = decided.filter(l => picked.indexOf(l.status) !== -1);
   decided.sort((a, b) => (b.decidedAt || b.createdAt || '').localeCompare(a.decidedAt || a.createdAt || ''));
   if (decided.length === 0) {
     tbody.innerHTML = '<tr><td colspan="9" class="empty">No decided leave requests yet.</td></tr>';
@@ -7246,7 +7332,7 @@ function renderCoaHistory() {
   const tbody = document.getElementById('coa-history-rows');
   if (!tbody) return;
   let decided = D.coas.filter(c => c.status !== 'pending');
-  if (picked.length) decided = decided.filter(c => picked.indexOf(c.status) !== -1);
+  decided = decided.filter(c => picked.indexOf(c.status) !== -1);
   decided.sort((a, b) => (b.decidedAt || b.createdAt || '').localeCompare(a.decidedAt || a.createdAt || ''));
   if (decided.length === 0) {
     tbody.innerHTML = '<tr><td colspan="8" class="empty">No decided COA requests yet.</td></tr>';

@@ -356,16 +356,35 @@ the All-timesheets employee picker and the leave / COA history status filters.
 **Period pickers stay single** — they select one date range, and “this week +
 last month” is not a range.
 
-⚠️ **An empty selection means ALL.** That is what makes the component a drop-in:
-every caller keeps its existing no-filter branch (`if (picked.length) …`), and
-nothing downstream learns about arrays. It also means ticking “All” *clears* the
-list rather than selecting every option — so a newly hired employee is included
-automatically instead of being left out of an “everyone” frozen at click time.
+**The ticked set IS the filter** — no special meaning for empty. Everything
+ticked (the default) shows everything; ticking “All” selects every option;
+unticking it clears them and the button reads **“None selected”** in a warning
+style, with a matching empty state, so an empty table never reads as lost data.
 
-State lives in `MULTI[id]`, not the DOM, because the option list is re-rendered
-whenever the roster changes (`populateEmpFilter`) and a selection has to survive
-that. `setMultiOptions()` drops a selected value that no longer exists — without
-it, terminating someone would filter a table to nothing with no visible cause.
+New hires stay covered because `setMultiOptions()` notices when everything
+*was* selected and re-selects everything. It also drops a selected value that no
+longer exists — without that, terminating someone would filter a table to
+nothing with no visible cause. State lives in `MULTI[id]`, not the DOM, since
+the list is rebuilt whenever the roster changes.
+
+⚠️ **Two bugs to never reintroduce, both invisible to jsdom:**
+
+1. **Never interpolate an option value into an inline handler.** The first
+   version built `onchange="onMultiToggle(id, JSON.stringify(value), …)"`, and
+   `JSON.stringify` emits **double quotes**, which closed the double-quoted HTML
+   attribute. Clicking a checkbox ticked the box and changed nothing — it only
+   worked when called from script, which is exactly what the tests did. Values
+   now ride in `data-multi-value` and a **single delegated `change` listener**
+   handles every filter.
+2. **Never rebuild the list on a toggle.** `renderMultiFilter()` builds the
+   options (init / roster change only); `syncMultiFilter()` updates the button
+   and the All box on every toggle. Rebuilding replaces the checkbox being
+   clicked, which resets the panel scroll and drops focus — the list jumps under
+   the cursor and the next click lands on the wrong person.
+
+Both passed 33 jsdom assertions before being caught in a browser. The suite now
+clicks real checkboxes (`tests/test-multi.cjs`, tests 34–43); do that for
+anything interactive.
 
 The button gets `.active` styling while filtering. A narrowed table that looks
 identical to a full one is how “missing data” reports start.
