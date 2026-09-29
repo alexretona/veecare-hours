@@ -61,7 +61,7 @@ them into the **Supabase SQL editor** manually. There is no migration runner.
 | `leave_year_snapshots` | Prior-year balances kept for the annual reset. **Admin-only (RLS)** |
 
 ### Migration history
-`veecare_migration.sql` is the base; then 003–017 in order.
+`veecare_migration.sql` is the base; then 003–023 in order.
 Notable: 007 termination · 008 line items + request flow · 009 request concern
 note · 010 employee-proposed allowances · 011 leave hours · 012 separate holiday rate
 · 013 holiday multipliers + holiday types · 014 admin balance adjustment + audit,
@@ -69,7 +69,9 @@ pre-system backfill, year snapshots · 015 yearly leave allocations
 · 016 the 1.5× third holiday type, and **removal** of EL credits · 017 working-day-only
 leave ranges + retraction of approved leave · 018 `cancel_own_leave()` so employees
 can retract their own · 019 the `custom` holiday type carrying its own multiplier · 020 reverses 017’s
-holiday-inside-leave exemption · 021 `holiday_off_hours` — premiums move to WORKED hours.
+holiday-inside-leave exemption · 021 `holiday_off_hours` — premiums move to WORKED hours
+· 022 surfaces holiday pay hidden inside pre-019 invoices · 023 relabels old-model
+one-off day-off pay.
 
 ### Leave balances
 `vl_balance` / `sl_balance` on `profiles` hold **remaining days** (not the annual
@@ -347,6 +349,32 @@ it would stop after one page and reproduce the very bug this prevents.
 ⚠️ Adding a new `.select()` over a whole table? Wrap it in `fetchAllRows`. The
 failure mode is silent, gradual, and always hits the newest data first.
 
+### Multi-select filters (`MULTI` / `initMultiFilter`)
+
+Filters that pick *things* are checkbox panels, not single-choice `<select>`s:
+the All-timesheets employee picker and the leave / COA history status filters.
+**Period pickers stay single** — they select one date range, and “this week +
+last month” is not a range.
+
+⚠️ **An empty selection means ALL.** That is what makes the component a drop-in:
+every caller keeps its existing no-filter branch (`if (picked.length) …`), and
+nothing downstream learns about arrays. It also means ticking “All” *clears* the
+list rather than selecting every option — so a newly hired employee is included
+automatically instead of being left out of an “everyone” frozen at click time.
+
+State lives in `MULTI[id]`, not the DOM, because the option list is re-rendered
+whenever the roster changes (`populateEmpFilter`) and a selection has to survive
+that. `setMultiOptions()` drops a selected value that no longer exists — without
+it, terminating someone would filter a table to nothing with no visible cause.
+
+The button gets `.active` styling while filtering. A narrowed table that looks
+identical to a full one is how “missing data” reports start.
+
+To add one: markup `.multi` wrapper + `<id>-btn` + `<id>-panel`, then
+`initMultiFilter(id, { allLabel, noun, options, onChange })`.
+
+---
+
 ## Hard-won gotchas (these were real bugs — don't reintroduce)
 
 1. **Admin review must load the SUBMITTED values, not a fresh recompute.**
@@ -393,6 +421,10 @@ pip install playwright && playwright install chromium   # real rendering
 - **Parse check both files** after every change — extract the `<script>` and
   `eval` it with stubbed `window`/`document`.
 - **jsdom** for logic: invoice math, workflow transitions, persistence.
+- **`tests/`** holds the committed suites — run them after any change to
+  invoice math, hydration or the filters. Earlier suites lived in a temp
+  scratchpad and were lost between sessions; anything worth asserting goes in
+  the repo.
 - **Playwright** for anything visual — layout, overflow, button visibility.
   jsdom does not do real layout and will report a clipped button as "visible".
 - **Verify div balance** in `demo.html` after markup surgery — an unclosed div

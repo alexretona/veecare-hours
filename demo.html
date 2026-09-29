@@ -720,6 +720,58 @@
     font-size: 13px;
   }
   .toolbar-spacer { flex: 1; }
+  /* ---- Multi-select filter ---- */
+  .multi { position: relative; display: inline-block; }
+  .multi-btn {
+    padding: 8px 28px 8px 10px;
+    border: 1px solid var(--line-strong);
+    background: var(--surface);
+    border-radius: 5px;
+    font-family: inherit;
+    font-size: 13px;
+    color: var(--ink);
+    cursor: pointer;
+    text-align: left;
+    min-width: 160px;
+    position: relative;
+  }
+  .multi-btn::after {
+    content: '';
+    position: absolute; right: 10px; top: 50%;
+    width: 6px; height: 6px;
+    border-right: 1.5px solid var(--ink-muted);
+    border-bottom: 1.5px solid var(--ink-muted);
+    transform: translateY(-70%) rotate(45deg);
+  }
+  .multi-btn:hover { border-color: var(--vc-green); }
+  .multi-btn:focus-visible { outline: 2px solid var(--vc-green); outline-offset: 1px; }
+  /* A filter that is actually filtering should look different from one that
+     is not - otherwise a narrowed table looks like missing data. */
+  .multi-btn.active {
+    border-color: var(--vc-green);
+    background: var(--accent-soft);
+    font-weight: 600;
+  }
+  .multi-panel {
+    position: absolute; z-index: 60; top: calc(100% + 4px); left: 0;
+    min-width: 240px; max-height: 300px; overflow-y: auto;
+    background: var(--surface);
+    border: 1px solid var(--line-strong);
+    border-radius: 6px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.12);
+    padding: 6px;
+  }
+  .multi-opt {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 8px; border-radius: 4px;
+    font-size: 13px; cursor: pointer;
+    text-transform: none; letter-spacing: normal; font-weight: 400;
+    color: var(--ink); white-space: nowrap;
+  }
+  .multi-opt:hover { background: var(--accent-soft); }
+  .multi-opt input { width: auto; margin: 0; }
+  .multi-sep { height: 1px; background: var(--line); margin: 4px 2px; }
+
 
   .toast {
     position: fixed;
@@ -1180,9 +1232,11 @@
         </div>
       </div>
       <div class="toolbar">
-        <select id="admin-ts-emp" onchange="renderAdminTimesheets()">
-          <option value="all">All employees</option>
-        </select>
+        <div class="multi" id="admin-ts-emp">
+          <button type="button" class="multi-btn" id="admin-ts-emp-btn" aria-haspopup="true" aria-expanded="false"
+                  onclick="toggleMultiPanel('admin-ts-emp')">All employees</button>
+          <div class="multi-panel" id="admin-ts-emp-panel" hidden></div>
+        </div>
         <select id="admin-ts-period" onchange="onAdminTsPeriodChange()">
           <option value="this-week">This week</option>
           <option value="last-week">Last week</option>
@@ -1225,12 +1279,11 @@
       <div class="panel" style="margin-top:24px;">
         <div class="panel-header" style="display:flex; justify-content:space-between; align-items:center;">
           <div class="panel-title">History — approved, rejected &amp; cancelled</div>
-          <select id="leave-history-filter" onchange="renderLeaveHistory()" style="font-size:12px;">
-            <option value="all">All</option>
-            <option value="approved">Approved only</option>
-            <option value="rejected">Rejected only</option>
-            <option value="cancelled">Cancelled only</option>
-          </select>
+          <div class="multi" id="leave-history-filter">
+            <button type="button" class="multi-btn" id="leave-history-filter-btn" style="font-size:12px; min-width:130px;"
+                    aria-haspopup="true" aria-expanded="false" onclick="toggleMultiPanel('leave-history-filter')">All</button>
+            <div class="multi-panel" id="leave-history-filter-panel" hidden></div>
+          </div>
         </div>
         <table>
           <thead><tr><th>Employee</th><th>Type</th><th>From</th><th>To</th><th>Days</th><th>Reason</th><th>Status</th><th>Decided</th><th></th></tr></thead>
@@ -1258,11 +1311,11 @@
       <div class="panel" style="margin-top:24px;">
         <div class="panel-header" style="display:flex; justify-content:space-between; align-items:center;">
           <div class="panel-title">History — approved &amp; rejected</div>
-          <select id="coa-history-filter" onchange="renderCoaHistory()" style="font-size:12px;">
-            <option value="all">All</option>
-            <option value="approved">Approved only</option>
-            <option value="rejected">Rejected only</option>
-          </select>
+          <div class="multi" id="coa-history-filter">
+            <button type="button" class="multi-btn" id="coa-history-filter-btn" style="font-size:12px; min-width:130px;"
+                    aria-haspopup="true" aria-expanded="false" onclick="toggleMultiPanel('coa-history-filter')">All</button>
+            <div class="multi-panel" id="coa-history-filter-panel" hidden></div>
+          </div>
         </div>
         <table>
           <thead><tr><th>Employee</th><th>Date</th><th>Clock in</th><th>Clock out</th><th>Lunch</th><th>Reason</th><th>Status</th><th>Decided</th></tr></thead>
@@ -6139,15 +6192,146 @@ async function addEmployee() {
   renderAdmin();
 }
 
+/* ---- Multi-select filter ----
+ * A button that opens a checkbox panel, standing in for a single-choice
+ * <select> filter. Built once here so a new filter is a one-line call rather
+ * than another hand-rolled dropdown.
+ *
+ * The value semantics are what make this a safe swap: an EMPTY selection means
+ * "all", so every caller keeps its existing "no filter" branch and nothing
+ * downstream has to learn about arrays. `multiValues(id)` returns [] for all.
+ *
+ * State lives in MULTI[id] rather than the DOM, because the option list is
+ * re-rendered whenever the roster changes (populateEmpFilter) and a selection
+ * must survive that. */
+const MULTI = {};
+
+function initMultiFilter(id, cfg) {
+  MULTI[id] = {
+    allLabel: cfg.allLabel,
+    noun: cfg.noun || 'selected',
+    options: cfg.options || [],
+    selected: MULTI[id] ? MULTI[id].selected : [],
+    onChange: cfg.onChange
+  };
+  renderMultiFilter(id);
+}
+
+/* Replace the option list, keeping any selection that still exists. Called
+ * when the roster changes; a name that has gone (terminated) drops out rather
+ * than filtering to nothing invisibly. */
+function setMultiOptions(id, options) {
+  const m = MULTI[id];
+  if (!m) return;
+  const valid = new Set(options.map(o => o.value));
+  m.options = options;
+  m.selected = m.selected.filter(v => valid.has(v));
+  renderMultiFilter(id);
+}
+
+/* [] means every option — the caller's "no filter" case. */
+function multiValues(id) {
+  const m = MULTI[id];
+  return m ? m.selected.slice() : [];
+}
+
+function multiLabel(id) {
+  const m = MULTI[id];
+  if (!m || m.selected.length === 0) return m ? m.allLabel : '';
+  if (m.selected.length === 1) {
+    const one = m.options.find(o => o.value === m.selected[0]);
+    return one ? one.label : m.allLabel;
+  }
+  return m.selected.length + ' ' + m.noun;
+}
+
+function renderMultiFilter(id) {
+  const m = MULTI[id];
+  const btn = document.getElementById(id + '-btn');
+  const panel = document.getElementById(id + '-panel');
+  if (!m || !btn || !panel) return;
+
+  btn.textContent = multiLabel(id);
+  btn.classList.toggle('active', m.selected.length > 0);
+  btn.setAttribute('aria-expanded', panel.hidden ? 'false' : 'true');
+
+  const row = (value, label) => {
+    const on = m.selected.indexOf(value) !== -1;
+    return '<label class="multi-opt">' +
+      '<input type="checkbox"' + (on ? ' checked' : '') +
+      ' onchange="onMultiToggle(\'' + id + '\', ' + JSON.stringify(value) + ', this.checked)">' +
+      '<span>' + label + '</span></label>';
+  };
+
+  panel.innerHTML =
+    '<label class="multi-opt multi-all">' +
+    '<input type="checkbox"' + (m.selected.length === 0 ? ' checked' : '') +
+    ' onchange="clearMultiFilter(\'' + id + '\')">' +
+    '<span><strong>' + m.allLabel + '</strong></span></label>' +
+    '<div class="multi-sep"></div>' +
+    m.options.map(o => row(o.value, o.label)).join('');
+}
+
+function onMultiToggle(id, value, checked) {
+  const m = MULTI[id];
+  if (!m) return;
+  const i = m.selected.indexOf(value);
+  if (checked) { if (i === -1) m.selected.push(value); }
+  else if (i !== -1) m.selected.splice(i, 1);
+  renderMultiFilter(id);
+  if (m.onChange) m.onChange();
+}
+
+/* Ticking "All" is the way back to no filter — clearing the list rather than
+ * selecting every option, so a newly added employee is included automatically
+ * instead of being silently left out of an "everyone" that was frozen. */
+function clearMultiFilter(id) {
+  const m = MULTI[id];
+  if (!m) return;
+  m.selected = [];
+  renderMultiFilter(id);
+  if (m.onChange) m.onChange();
+}
+
+function toggleMultiPanel(id) {
+  const panel = document.getElementById(id + '-panel');
+  if (!panel) return;
+  const wasOpen = !panel.hidden;
+  closeAllMultiPanels();
+  if (!wasOpen) { panel.hidden = false; renderMultiFilter(id); }
+}
+
+function closeAllMultiPanels() {
+  document.querySelectorAll('.multi-panel').forEach(p => { p.hidden = true; });
+  Object.keys(MULTI).forEach(id => {
+    const btn = document.getElementById(id + '-btn');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+  });
+}
+
+/* Click anywhere else, or Escape, closes the open panel. Without this the
+ * panel sits over the table and looks stuck. */
+document.addEventListener('click', e => {
+  if (!e.target.closest || !e.target.closest('.multi')) closeAllMultiPanels();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeAllMultiPanels();
+});
+
 function populateEmpFilter() {
-  const sel = document.getElementById('admin-ts-emp');
-  const current = sel.value;
   /* Terminated employees are left off this picker-by-name — "All employees"
    * still surfaces their historical entries, since that's a data view, not
    * a roster. */
   const employees = D.users.filter(u => u.role==='employee' && !u.terminatedAt);
-  sel.innerHTML = '<option value="all">All employees</option>' + employees.map(u => `<option value="${u.id}">${u.name}</option>`).join('');
-  sel.value = current;
+  const options = employees.map(u => ({ value: u.id, label: u.name }));
+  if (!MULTI['admin-ts-emp']) {
+    initMultiFilter('admin-ts-emp', {
+      allLabel: 'All employees', noun: 'employees',
+      options, onChange: renderAdminTimesheets
+    });
+  } else {
+    setMultiOptions('admin-ts-emp', options);
+  }
 }
 
 function onAdminTsPeriodChange() {
@@ -6165,13 +6349,14 @@ function onAdminTsPeriodChange() {
 }
 
 function renderAdminTimesheets() {
-  const empId = document.getElementById('admin-ts-emp').value;
+  /* [] means everyone - see multiValues(). */
+  const picked = multiValues('admin-ts-emp');
   const periodKey = document.getElementById('admin-ts-period').value;
   const p = periodRange(periodKey);
 
   let entries = D.entries.filter(e => e.status==='completed' && e.date>=p.start && e.date<=p.end);
-  if (empId !== 'all') {
-    entries = entries.filter(e => e.userId===empId);
+  if (picked.length) {
+    entries = entries.filter(e => picked.indexOf(e.userId) !== -1);
   } else {
     /* "All employees" excludes terminated staff entirely, not just from the
      * name picker — they're a closed chapter, and mixing their entries into
@@ -6187,9 +6372,9 @@ function renderAdminTimesheets() {
   let onLeaveRows = [];
   let holidayRows = [];
   const workingDays = (periodKey === 'all') ? [] : getWorkingDaysInRange(p.start, p.end);
-  const targetEmployees = empId === 'all'
-    ? D.users.filter(u => u.role === 'employee' && !u.terminatedAt)
-    : D.users.filter(u => u.id === empId);
+  const targetEmployees = picked.length
+    ? D.users.filter(u => picked.indexOf(u.id) !== -1)
+    : D.users.filter(u => u.role === 'employee' && !u.terminatedAt);
 
   for (const u of targetEmployees) {
     const userEntryDates = new Set(entries.filter(e => e.userId===u.id).map(e=>e.date));
@@ -6355,14 +6540,20 @@ async function executeDeleteEntry() {
 }
 
 function exportTimesheetCSV() {
-  const empId = document.getElementById('admin-ts-emp').value;
+  const picked = multiValues('admin-ts-emp');
   const periodKey = document.getElementById('admin-ts-period').value;
   const p = periodRange(periodKey);
   let entries = D.entries.filter(e => e.status==='completed' && e.date>=p.start && e.date<=p.end);
-  if (empId !== 'all') entries = entries.filter(e => e.userId===empId);
+  if (picked.length) entries = entries.filter(e => picked.indexOf(e.userId) !== -1);
   entries.sort((a,b)=>b.date.localeCompare(a.date));
   if (entries.length === 0) { toast('No entries to export'); return; }
-  const empLabel = empId === 'all' ? 'All Employees' : (D.users.find(x=>x.id===empId)||{}).name || empId;
+  /* One name reads as a name; several read as a count, so the file is still
+   * identifiable without a 200-character filename. */
+  const empLabel = !picked.length
+    ? 'All Employees'
+    : (picked.length === 1
+        ? ((D.users.find(x => x.id === picked[0]) || {}).name || picked[0])
+        : (picked.length + ' Employees'));
   const total = entries.reduce((s,e)=>s+workedHours(e),0);
   const rows = [
     ['VeeCare Staffing Solutions PH — Timesheet Export'],
@@ -7093,12 +7284,21 @@ async function confirmCancelLeave() {
 }
 
 function renderLeaveHistory() {
-  const filterEl = document.getElementById('leave-history-filter');
-  const filter = filterEl ? filterEl.value : 'all';
+  /* Built on first render so the panel exists before anything opens it. */
+  if (!MULTI['leave-history-filter']) {
+    initMultiFilter('leave-history-filter', {
+      allLabel: 'All', noun: 'statuses',
+      options: [{ value: 'approved', label: 'Approved' },
+                { value: 'rejected', label: 'Rejected' },
+                { value: 'cancelled', label: 'Cancelled' }],
+      onChange: renderLeaveHistory
+    });
+  }
+  const picked = multiValues('leave-history-filter');
   const tbody = document.getElementById('leave-history-rows');
   if (!tbody) return;
   let decided = D.leaves.filter(l => l.status !== 'pending');
-  if (filter !== 'all') decided = decided.filter(l => l.status === filter);
+  if (picked.length) decided = decided.filter(l => picked.indexOf(l.status) !== -1);
   decided.sort((a, b) => (b.decidedAt || b.createdAt || '').localeCompare(a.decidedAt || a.createdAt || ''));
   if (decided.length === 0) {
     tbody.innerHTML = '<tr><td colspan="9" class="empty">No decided leave requests yet.</td></tr>';
@@ -7214,12 +7414,19 @@ async function rejectCoa(id) {
 }
 
 function renderCoaHistory() {
-  const filterEl = document.getElementById('coa-history-filter');
-  const filter = filterEl ? filterEl.value : 'all';
+  if (!MULTI['coa-history-filter']) {
+    initMultiFilter('coa-history-filter', {
+      allLabel: 'All', noun: 'statuses',
+      options: [{ value: 'approved', label: 'Approved' },
+                { value: 'rejected', label: 'Rejected' }],
+      onChange: renderCoaHistory
+    });
+  }
+  const picked = multiValues('coa-history-filter');
   const tbody = document.getElementById('coa-history-rows');
   if (!tbody) return;
   let decided = D.coas.filter(c => c.status !== 'pending');
-  if (filter !== 'all') decided = decided.filter(c => c.status === filter);
+  if (picked.length) decided = decided.filter(c => picked.indexOf(c.status) !== -1);
   decided.sort((a, b) => (b.decidedAt || b.createdAt || '').localeCompare(a.decidedAt || a.createdAt || ''));
   if (decided.length === 0) {
     tbody.innerHTML = '<tr><td colspan="8" class="empty">No decided COA requests yet.</td></tr>';
