@@ -61,7 +61,7 @@ them into the **Supabase SQL editor** manually. There is no migration runner.
 | `leave_year_snapshots` | Prior-year balances kept for the annual reset. **Admin-only (RLS)** |
 
 ### Migration history
-`veecare_migration.sql` is the base; then 003–023 in order.
+`veecare_migration.sql` is the base; then 003–024 in order.
 Notable: 007 termination · 008 line items + request flow · 009 request concern
 note · 010 employee-proposed allowances · 011 leave hours · 012 separate holiday rate
 · 013 holiday multipliers + holiday types · 014 admin balance adjustment + audit,
@@ -71,7 +71,18 @@ leave ranges + retraction of approved leave · 018 `cancel_own_leave()` so emplo
 can retract their own · 019 the `custom` holiday type carrying its own multiplier · 020 reverses 017’s
 holiday-inside-leave exemption · 021 `holiday_off_hours` — premiums move to WORKED hours
 · 022 surfaces holiday pay hidden inside pre-019 invoices · 023 relabels old-model
-one-off day-off pay.
+one-off day-off pay · 024 `semimonthly` cutoff frequency.
+
+### Twice-a-month cutoffs (`semimonthly`, migration 024)
+
+`cycle_frequency` is `biweekly` | `monthly` | `semimonthly`. Semimonthly uses the
+anchor's day-of-month folded into 1..15 as the first start and +15 as the second:
+anchor on the 1st → 1–15 / 16–end of month; the 11th or 26th → 11–25 / 26–10. A
+cutoff ends the day before the next starts, and the end is NOT weekend-trimmed
+(the label is the date the client quotes). `monthly_salary` stays a per-MONTH
+figure; `cycleSalary(u)` halves it for a semimonthly person, so 25,000/mo bills
+12,500 per cutoff. Every screen that seeds a salary goes through it — don't read
+`u.monthlySalary` directly for an invoice amount. Tests: `tests/test-semimonthly.cjs`.
 
 ### Leave balances
 `vl_balance` / `sl_balance` on `profiles` hold **remaining days** (not the annual
