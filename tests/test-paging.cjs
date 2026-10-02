@@ -4,7 +4,7 @@
  * from every admin screen. */
 const { JSDOM } = require('jsdom');
 const fs = require('fs');
-const html = fs.readFileSync('C:/Users/alexr/source/repos/veecare-hours/demo.html', 'utf8');
+const html = fs.readFileSync(require('path').join(__dirname, '..', 'demo.html'), 'utf8');
 const dom = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true, url: 'https://example.test/' });
 const w = dom.window;
 const results = [];
