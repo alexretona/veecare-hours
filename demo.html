@@ -1880,6 +1880,7 @@
           <label>Frequency</label>
           <select id="cyc-freq" onchange="previewCycle()">
             <option value="biweekly">Bi-weekly (every 2 weeks)</option>
+            <option value="semimonthly">Twice a month (e.g. 1–15 &amp; 16–end)</option>
             <option value="monthly">Monthly</option>
           </select>
         </div>
@@ -3527,11 +3528,62 @@ function trimWeekendEnd(start, end) {
   return e;
 }
 
+
+/* ---- semimonthly: two cutoffs a month ----
+ * The anchor's day-of-month (folded into 1..15) is the first start; the second
+ * starts 15 days later. Anchor on the 1st -> 1-15 and 16-end of month.
+ * Anchor on the 11th (or the 26th) -> 11-25 and 26-10. Each cutoff ends the day
+ * before the next one starts, so nothing is ever skipped or double-counted.
+ * Weekends are NOT trimmed off the end: the label is the date the client quotes
+ * ("1-15"), unlike the 14-day cutoff whose end is arbitrary.
+ * index = 2 * (months from the anchor's month) + (0 first half | 1 second). */
+function semiStartOf(anchor, ord) {
+  const [ay, am, ad] = anchor.split('-').map(Number);
+  const first = ad > 15 ? ad - 15 : ad;
+  const months = Math.floor(ord / 2);
+  const half = ((ord % 2) + 2) % 2;
+  const total = ay * 12 + (am - 1) + months;
+  const y = Math.floor(total / 12), m = (total % 12) + 1;
+  const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const d = Math.min(first + (half ? 15 : 0), lastDay);
+  return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+}
+function semiCycleForDate(anchor, dateStr) {
+  const [ay, am] = anchor.split('-').map(Number);
+  const [dy, dm, dd] = dateStr.split('-').map(Number);
+  let ord = 2 * ((dy * 12 + dm) - (ay * 12 + am)) + (dd >= 15 ? 1 : 0);
+  for (let guard = 0; guard < 400; guard++) {
+    const s = semiStartOf(anchor, ord);
+    const nxt = semiStartOf(anchor, ord + 1);
+    if (dateStr < s) { ord--; continue; }
+    if (dateStr >= nxt) { ord++; continue; }
+    const e = addDays(nxt, -1);
+    return { start: s, end: e, rawEnd: e, index: ord };
+  }
+  return null;
+}
+
+/* Label for the Frequency column. */
+function cycleFreqLabel(u) {
+  return u.cycleFrequency === 'monthly' ? 'Monthly'
+    : u.cycleFrequency === 'semimonthly' ? 'Twice a month' : 'Bi-weekly';
+}
+
+/* The fixed amount ONE invoice carries for a salaried employee. monthlySalary
+ * is a per-MONTH figure, so someone cut off twice a month bills half of it per
+ * cutoff (25,000/mo -> 12,500 each). The hourly-equivalent rate is unaffected. */
+function cycleSalary(u) {
+  const s = u.monthlySalary || 0;
+  return u.cycleFrequency === 'semimonthly' ? round2(s / 2) : s;
+}
+
 /* The cutoff containing `dateStr` for this user, or null if unconfigured. */
 function cycleForDate(user, dateStr) {
   if (!user || !user.cycleAnchor) return null;
   const anchor = user.cycleAnchor;
   const freq = user.cycleFrequency || 'biweekly';
+
+  if (freq === 'semimonthly') return semiCycleForDate(anchor, dateStr);
 
   if (freq === 'monthly') {
     /* Walk month-blocks forward or backward from the anchor until we land on
@@ -3568,7 +3620,9 @@ function currentCycle(user) {
 function shiftCycle(user, cycle, n) {
   if (!cycle) return null;
   const freq = user.cycleFrequency || 'biweekly';
-  const s = freq === 'monthly'
+  const s = freq === 'semimonthly'
+    ? semiStartOf(user.cycleAnchor, cycle.index + n)
+    : freq === 'monthly'
     ? addMonths(user.cycleAnchor, cycle.index + n)
     : addDays(user.cycleAnchor, (cycle.index + n) * 14);
   return cycleForDate(user, s);
@@ -5792,7 +5846,8 @@ function payCell(u) {
   if (u.payBasis === 'monthly') {
     return '<span style="font-weight:600; color:var(--ink);">' + currency(u.monthlySalary || 0) + '/mo</span>' +
       '<span class="badge monthly" style="font-size:9px; margin-left:4px;">Monthly</span>' +
-      '<br><span style="font-size:10px; color:var(--ink-muted);">\u2248 ' + currency(u.rate) + '/hr \u00b7 ' + round2(u.standardMonthlyHours) + ' hrs basis</span>';
+      '<br><span style="font-size:10px; color:var(--ink-muted);">\u2248 ' + currency(u.rate) + '/hr \u00b7 ' + round2(u.standardMonthlyHours) + ' hrs basis</span>' +
+      (u.cycleFrequency === 'semimonthly' ? '<br><span style="font-size:10px; color:var(--ink-muted);">' + currency(cycleSalary(u)) + ' per cutoff (2 a month)</span>' : '');
   }
   return '<span class="mono">' + currency(u.rate) + '/hr</span>';
 }
@@ -5848,7 +5903,7 @@ function renderEmployeesTable() {
     let cycleCell;
     if (cyc) {
       const capTxt = (u.capHours === null) ? 'no cap' : `cap ${round2(u.capHours)} hrs`;
-      const freqTxt = (u.cycleFrequency === 'monthly') ? 'Monthly' : 'Bi-weekly';
+      const freqTxt = cycleFreqLabel(u);
       cycleCell = `<span style="font-size:11px; font-weight:600; color:var(--vc-navy);">${freqTxt}</span>
         <br><span style="font-size:10px; color:var(--ink-muted);">${fmtDate(cyc.start)} – ${fmtDate(cyc.end)} · ${capTxt}</span>
         <br><button class="btn btn-ghost btn-sm" style="padding:2px 6px; font-size:10px; margin-top:3px;" onclick="openCycleModal('${u.id}')">Edit cutoff</button>`;
@@ -8138,7 +8193,7 @@ function renderCutoffs() {
       </tr>`;
     }
     const inv = computeInvoice(u, cyc.start, cyc.end);
-    const freqTxt = (u.cycleFrequency === 'monthly') ? 'Monthly' : 'Bi-weekly';
+    const freqTxt = cycleFreqLabel(u);
     const isMonthlyPay = u.payBasis === 'monthly';
     const capTxt = isMonthlyPay ? '—' : (inv.cap === null ? '—' : round2(inv.cap) + ' hrs');
 
@@ -8423,7 +8478,7 @@ function recomputeBuilder(reseed) {
      * regular pay, so it must never share a value with Leave (which should
      * stay at the plain rate, no premium). */
     const salaryDefault = (u.payBasis === 'monthly' && u.monthlySalary)
-      ? u.monthlySalary
+      ? cycleSalary(u)
       : round2(computed.regularAmount);
     const seedMonthly = {
       'ib-monthly-salary': salaryDefault,
@@ -8463,7 +8518,7 @@ function ibNum(id) {
 function onIbFieldChange(field) {
   const c = IB.computed;
   const u = D.users.find(x => x.id === IB.userId);
-  const salaryDefault = (u && u.payBasis === 'monthly' && u.monthlySalary) ? u.monthlySalary : round2(c.regularAmount);
+  const salaryDefault = (u && u.payBasis === 'monthly' && u.monthlySalary) ? cycleSalary(u) : round2(c.regularAmount);
   const map = {
     'ib-rate': c.rate,
     'ib-regular': c.regularHours,
@@ -9828,7 +9883,7 @@ function openEmpHoursModal(u, cyc) {
   document.getElementById('eh-monthly-block').style.display = isMonthly ? '' : 'none';
 
   if (isMonthly) {
-    document.getElementById('eh-salary-disp').textContent = currency(u.monthlySalary);
+    document.getElementById('eh-salary-disp').textContent = currency(cycleSalary(u));
     document.getElementById('eh-rate-m-disp').textContent = currency(c.rate);
     document.getElementById('eh-holiday-m').value = c.holidayHours;
     document.getElementById('eh-leave-m').value = c.leaveHours;
@@ -9895,7 +9950,7 @@ function refreshEhTotals() {
 
   if (EMP_HOURS.basis === 'monthly') {
     const u = D.users.find(x => x.id === EMP_HOURS.userId);
-    const salary = u ? (u.monthlySalary || 0) : 0;
+    const salary = u ? cycleSalary(u) : 0;
     const holHrs = ehNum('eh-holiday-m');
     const rate = c.rate;
     /* Same fix as the hourly branch: pay the configured holiday premium. */
@@ -9959,7 +10014,7 @@ function continueToRequestPreview() {
 
   let inv;
   if (isMonthly) {
-    const salary = u.monthlySalary || 0;
+    const salary = cycleSalary(u);
     const holiday = ehNum('eh-holiday-m');
     const leave = ehNum('eh-leave-m');
     const holAmt = round2(holiday * c.holidayRate);
@@ -9967,7 +10022,7 @@ function continueToRequestPreview() {
     inv = {
       user: u, start: EMP_HOURS.start, end: EMP_HOURS.end,
       entries: c.entries, workedHours: c.workedHours,
-      payBasis: 'monthly', monthlySalary: u.monthlySalary,
+      payBasis: 'monthly', monthlySalary: salary,
       regularHours: 0, overtimeHours: 0,
       holidayHours: round2(holiday), leaveHours: round2(leave),
       excessHours: 0,
