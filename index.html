@@ -667,6 +667,11 @@
     justify-content: center;
     padding: 20px;
   }
+  /* The in-app confirm must paint ABOVE every other modal. It sits early in the
+   * markup, so at equal z-index the later modals (e.g. the invoice preview)
+   * covered it: "Duplicate period - Save anyway?" opened invisibly behind the
+   * invoice and Save Invoice appeared to do nothing. */
+  #confirm-modal { z-index: 300; }
   .modal-backdrop.active { display: flex; }
   .modal {
     background: var(--surface);
