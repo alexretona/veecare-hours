@@ -61,7 +61,7 @@ them into the **Supabase SQL editor** manually. There is no migration runner.
 | `leave_year_snapshots` | Prior-year balances kept for the annual reset. **Admin-only (RLS)** |
 
 ### Migration history
-`veecare_migration.sql` is the base; then 003–024 in order.
+`veecare_migration.sql` is the base; then 003–025 in order.
 Notable: 007 termination · 008 line items + request flow · 009 request concern
 note · 010 employee-proposed allowances · 011 leave hours · 012 separate holiday rate
 · 013 holiday multipliers + holiday types · 014 admin balance adjustment + audit,
@@ -71,7 +71,33 @@ leave ranges + retraction of approved leave · 018 `cancel_own_leave()` so emplo
 can retract their own · 019 the `custom` holiday type carrying its own multiplier · 020 reverses 017’s
 holiday-inside-leave exemption · 021 `holiday_off_hours` — premiums move to WORKED hours
 · 022 surfaces holiday pay hidden inside pre-019 invoices · 023 relabels old-model
-one-off day-off pay · 024 `semimonthly` cutoff frequency.
+one-off day-off pay · 024 `semimonthly` cutoff frequency · 025 signup approval + the `profiles` write guard.
+
+### Accounts: signup approval and the `profiles` guard (migration 025)
+
+Self-signup ("Create account") makes a **pending** account: it cannot sign in,
+clock in, file leave/COA or request an invoice until an admin approves it under
+**Employees → Waiting for approval**. It was "Owner approves later" in name only
+until 2026-10-12, when Joanne mistyped her sign-in email (`joanee@` for
+`joannee@`), signed up with the typo and clocked in on both accounts — two
+"Joanne Marie Espejon" rows on the Overview. The panel flags a pending name that
+matches an existing employee (`byName` equality) as a probable duplicate.
+
+Pending accounts live in `D.pendingUsers`, never `D.users` — one filter in
+`hydrate()` keeps them out of every roster, picker, payroll row and head-count.
+
+⚠️ The real control is server-side. Before 025 both `profiles` policies scoped
+the row but not the columns, so any employee could write their own `role`,
+`rate` or balances, and anyone with the public anon key could sign up as an
+admin. The `guard_profile_write()` trigger now:
+- on a non-admin INSERT forces every pay/access/leave column to the new-hire
+  default and sets `pending_approval` — **a new profile column that carries pay
+  or access must be added to that list**;
+- on a non-admin UPDATE keeps every column except `timezone` (a whitelist, so a
+  new column is protected by default).
+Admins, the SQL editor and `SECURITY DEFINER` functions (`cancel_own_leave()`)
+pass through. `is_active_member()` gates the employee insert policies on
+`time_entries`, `leave_requests`, `coa_requests` and `invoices`.
 
 ### Twice-a-month cutoffs (`semimonthly`, migration 024)
 
