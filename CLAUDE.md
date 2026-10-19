@@ -36,6 +36,11 @@ them into the **Supabase SQL editor** manually. There is no migration runner.
 
 ---
 
+**Changing owners?** Follow `docs/HANDOVER.md` step by step — transfer the GitHub repo,
+Vercel project and Supabase project; never rebuild them.
+
+---
+
 ## Stack
 - **Frontend**: single-file HTML/CSS/vanilla JS
 - **Backend**: Supabase (Postgres + Auth + RLS)
