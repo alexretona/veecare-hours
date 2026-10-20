@@ -280,6 +280,8 @@ and approved) before removing yourself — so if anything breaks you can still h
 ### Never do these
 - Don't create a new Supabase project and copy data unless a transfer is truly
   impossible (see "The one rule").
+  Since 30 Oct 2026 a rebuilt project also gets **no table access by default**:
+  every table would need its grants added by hand before the app could read it.
 - Don't remove the **last** admin login.
 - Don't delete your old accounts until Phase D is complete.
 - Don't run the handover on a payroll day.
