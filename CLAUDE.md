@@ -33,6 +33,22 @@ them into the **Supabase SQL editor** manually. There is no migration runner.
 - Always **backfill** when adding a column that existing rows need.
 - Never assume a migration has been run — new columns need safe fallbacks in the
   JS mappers (see `holidayRate` falling back to `rate`).
+- **A migration that creates a table must also grant access to it.** From
+  2026-10-30 Supabase no longer auto-grants new `public` tables to the Data API;
+  without a grant every read and write fails with "permission denied". The 12
+  tables that existed before that date keep their grants. In the same migration:
+  ```sql
+  alter table public.new_table enable row level security;
+  grant select, insert, update, delete on public.new_table to authenticated;
+  grant select, insert, update, delete on public.new_table to service_role;
+  ```
+  No `anon` grant — the app only talks to the database after sign-in. RLS
+  policies still decide which rows each user sees; the grant only opens the door.
+
+---
+
+**Changing owners?** Follow `docs/HANDOVER.md` step by step — transfer the GitHub repo,
+Vercel project and Supabase project; never rebuild them.
 
 ---
 

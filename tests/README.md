@@ -9,6 +9,7 @@ node tests/test-smoke.cjs       # hydrate + the holiday and leave rules
 node tests/test-multi.cjs       # the multi-select filter component
 node tests/test-semimonthly.cjs # twice-a-month cutoffs + per-cutoff salary
 node tests/test-signup-approval.cjs # pending signups: kept off rosters, approve/reject by click
+node tests/test-open-shift-not-absent.cjs # a shift still open is not an absence
 ```
 
 They live in the repo on purpose: earlier suites were written in a temp
