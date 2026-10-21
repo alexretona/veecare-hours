@@ -4884,7 +4884,10 @@ function renderTimesheet() {
    *   - has entry -> "Present"
    *   - no entry + approved leave -> "On leave · <type>"
    *   - no entry + no leave -> "Absent" */
-  const entryDates = new Set(entries.map(e=>e.date));
+  /* A shift still open (night shift past midnight, or a missed clock-out) is
+   * not an absence - see renderAdminTimesheets. No hours until it closes. */
+  const openEntries = D.entries.filter(e => e.userId===u.id && e.status==='in-progress' && e.date>=p.start && e.date<=p.end);
+  const entryDates = new Set(entries.concat(openEntries).map(e=>e.date));
   const workingDays = getWorkingDaysInRange(p.start, p.end);
   const onLeaveRows = [];
   const holidayRows = [];
@@ -4945,7 +4948,15 @@ function renderTimesheet() {
       hours: hoursDisplay,
       statusHtml
     };
-  }).concat(absentDates.map(d => ({
+  }).concat(openEntries.map(e => ({
+    date: e.date,
+    clockIn: fmtTime(e.clockIn),
+    clockOut: '—',
+    hours: '—',
+    statusHtml: isStaleOpenEntry(e)
+      ? '<span class="badge absent">No clock-out</span> <span style="font-size:10px;color:var(--ink-muted);">file a COA</span>'
+      : '<span class="badge in">Clocked in</span>'
+  }))).concat(absentDates.map(d => ({
     date: d,
     clockIn: '—',
     clockOut: '—',
@@ -6436,6 +6447,14 @@ function renderAdminTimesheets() {
     const terminatedIds = new Set(D.users.filter(u => u.terminatedAt).map(u => u.id));
     entries = entries.filter(e => !terminatedIds.has(e.userId));
   }
+  /* Shifts still OPEN on a date in range: a night shift past midnight, or one
+   * nobody clocked out of. They carry no hours yet, so they stay out of
+   * `entries` and the total - but they are not absences. Counting only
+   * completed entries tagged every night-shift worker ABSENT for "yesterday"
+   * until they clocked out next morning (reported 2026-10-21 for Oct 20). */
+  const openEntries = D.entries.filter(e => e.status === 'in-progress' &&
+    e.date >= p.start && e.date <= p.end && picked.indexOf(e.userId) !== -1 &&
+    !D.users.some(u => u.id === e.userId && u.terminatedAt));
   const total = entries.reduce((s,e)=>s+workedHours(e),0);
   document.getElementById('admin-ts-total').textContent = round2(total) + ' hrs';
 
@@ -6446,7 +6465,7 @@ function renderAdminTimesheets() {
   const targetEmployees = D.users.filter(u => picked.indexOf(u.id) !== -1);
 
   for (const u of targetEmployees) {
-    const userEntryDates = new Set(entries.filter(e => e.userId===u.id).map(e=>e.date));
+    const userEntryDates = new Set(entries.concat(openEntries).filter(e => e.userId===u.id).map(e=>e.date));
     /* A terminated employee can no longer log in, so every working day after
      * they left would otherwise have no entry and get auto-tagged Absent —
      * which is misleading noise, not a real attendance gap. Their actual
@@ -6484,10 +6503,11 @@ function renderAdminTimesheets() {
     const u = D.users.find(x => x.id===e.userId);
     return { type: 'entry', date: e.date, entry: e, user: u };
   });
+  const openTyped = openEntries.map(e => ({ type: 'open', date: e.date, entry: e, user: D.users.find(x => x.id === e.userId) }));
   const absentTyped = absentRows.map(a => ({ type: 'absent', date: a.date, userName: a.userName }));
   const onLeaveTyped = onLeaveRows.map(a => ({ type: 'on-leave', date: a.date, userName: a.userName, leave: a.leave }));
   const holidayTyped = holidayRows.map(a => ({ type: 'holiday', date: a.date, userName: a.userName, holName: a.holName, paid: a.paid, hours: a.hours }));
-  const allRows = presentRows.concat(absentTyped, onLeaveTyped, holidayTyped);
+  const allRows = presentRows.concat(openTyped, absentTyped, onLeaveTyped, holidayTyped);
   allRows.sort((a,b) => b.date.localeCompare(a.date) || (a.userName||a.user?.name||'').localeCompare(b.userName||b.user?.name||''));
 
   const tbody = document.getElementById('admin-ts-rows');
@@ -6534,6 +6554,21 @@ function renderAdminTimesheets() {
         <td class="mono" style="color:var(--ink-muted);">—</td>
         <td><span class="badge on-leave">On leave · ${r.leaveType}</span></td>
         <td></td>
+      </tr>`;
+    }
+    if (r.type === 'open') {
+      const e = r.entry;
+      const ez = (r.user && r.user.timezone) || DEFAULT_TZ;
+      const badge = isStaleOpenEntry(e)
+        ? `<span class="badge absent" title="Clocked in but never clocked out - no hours count until it is corrected">No clock-out</span>`
+        : `<span class="badge in" title="Shift in progress - hours count once they clock out">Still working</span>`;
+      return `<tr>
+        <td>${r.user ? r.user.name : ''}</td>
+        <td>${fmtDate(e.date, ez)}</td>
+        <td class="mono">${fmtTime(e.clockIn, ez)} <span style="font-size:9px;color:var(--ink-muted);letter-spacing:0.04em;">${tzLabel(ez)}</span></td>
+        <td class="mono" style="color:var(--ink-muted);">—</td>
+        <td>${badge}</td>
+        <td><button class="btn btn-danger btn-sm" onclick="confirmDeleteEntry('${e.id}')">Delete</button></td>
       </tr>`;
     }
     const e = r.entry;
