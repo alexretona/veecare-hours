@@ -362,6 +362,29 @@ Past 20 hours an entry stops counting as active and is surfaced instead:
 `staleOpenEntries()` drives the employee banner and the admin "unfinished" badge.
 Don’t remove the bound to "support long shifts".
 
+### Long shifts are confirmed, never silently recorded (`LONG_SHIFT_HOURS` = 12)
+
+Past 12 hours an open shift is more likely a forgotten clock-out than real work.
+Between June and October 2026, 28 finished shifts ran past it: at least five were
+an admin **force clock-out saved with the pre-filled "now"** (Diane, 21 Oct:
+16.86 hrs; one HR test shift: 73 hrs), the rest mostly people who forgot and
+clocked out whenever they next opened the app. Both doors now stop and ask:
+
+- **Force clock-out** defaults to clock-in + 8h (not now) once a shift is past 12h,
+  shows a live "This records N hours" line, and the confirm states the hours.
+- **Employee clock-out** past 12h opens the long-shift modal: "I worked until
+  now" or enter the real end time. An earlier time can only lower their hours,
+  so letting them set it is safe. `earliestClockOut()` stops it landing before a
+  lunch or pause that already ended.
+- Anything that still gets through is flagged **⚠ long shift** on All timesheets.
+
+`hoursIfClosedAt(entry, iso)` is the one place that predicts the hours a close
+will record — both previews use it. Tests: `tests/test-long-shift.cjs`.
+
+A shift still open is **present**, not absent, on both timesheets ("Still
+working" / "No clock-out"); it adds no hours until closed
+(`tests/test-open-shift-not-absent.cjs`).
+
 ### Cutoff release (`cycleReadyToInvoice`)
 
 A cutoff is invoiceable when the WORK is done, not when the calendar says so:
