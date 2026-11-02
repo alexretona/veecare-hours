@@ -23,6 +23,17 @@ setTimeout(async () => {
     w.demoViewAs('admin-1');
     await new Promise(r => setTimeout(r, 300));
     w.switchAdminView('timesheets');
+    /* The default period is "This month". On the 1st or 2nd of a month the
+     * demo has barely any entries in it, and tests 11/14/38 failed for that
+     * reason alone (first seen 2026-11-02). Use the last 14 days instead. */
+    $('admin-ts-period').value = 'custom';
+    $('admin-ts-custom-from').value = w.addDays(w.today(), -14);
+    $('admin-ts-custom-to').value = w.today();
+    w.onAdminTsPeriodChange();
+    /* ...which also pins a real bug: the admin custom range used to read the
+     * EMPLOYEE timesheet's (blank) date inputs and fall back to this month. */
+    check('0. admin custom range reaches back 14 days, not just this month',
+      w.periodRange('custom', 'admin-ts').start, w.addDays(w.today(), -14));
 
     const emps = D.users.filter(u => u.role === 'employee' && !u.terminatedAt);
     const rows = () => w.document.querySelectorAll('#admin-ts-rows tr').length;
