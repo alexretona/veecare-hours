@@ -385,6 +385,32 @@ A shift still open is **present**, not absent, on both timesheets ("Still
 working" / "No clock-out"); it adds no hours until closed
 (`tests/test-open-shift-not-absent.cjs`).
 
+### Missed cutoffs and Monday anchors (`findUninvoicedShifts`, `cycleAnchorWarning`)
+
+An employee can only request their **most recent** finished cutoff, so a cutoff
+nobody invoiced in time can never be requested again — and nothing used to say
+so. Found 2026-11-02: Jona's Sep 21 – Oct 2 (~95 hrs) and Daryl's Sep 14 – 25 sat
+uninvoiced for weeks. **Invoices → Shifts not on any invoice** (badge on the
+Invoices nav) lists completed shifts in a cutoff *older* than the requestable
+one, on a date no invoice of that person covers (any workflow state). It starts
+at their first invoice, so time logged before invoicing moved into the app is
+ignored. *Create invoice…* opens the builder on exactly those days; *Already
+paid — hide* is remembered in **that browser only** (`localStorage`
+`vc_uninvoiced_ok`) — a convenience, not a record.
+
+The same incident had a second cause: Jona's bi-weekly anchor was a **Tuesday**
+(Jul 28), so her cutoffs ran Tue–Mon, invoice #081 (Oct 6–19) swallowed the next
+cutoff's Monday, and the app said her last cutoff was already invoiced. The
+cycle form now warns, and asks before saving, a bi-weekly anchor that is not a
+Monday. Monthly / twice-a-month anchors are a day of the month — no warning.
+Tests: `tests/test-uninvoiced.cjs`.
+
+`periodRange(period, customFrom)` — a `'custom'` period reads the date pair
+named by `customFrom` (`'ts'` default, `'admin-ts'` for All timesheets). Both
+pairs are in the page at once; before 2026-11-02 the admin side read the
+employee's blank pair and every admin custom range (table and CSV) silently
+became "this month so far".
+
 ### Cutoff release (`cycleReadyToInvoice`)
 
 A cutoff is invoiceable when the WORK is done, not when the calendar says so:

@@ -1140,7 +1140,7 @@
         <div class="nav-item" data-admin-view="approvals" onclick="switchAdminView('approvals')">Leave approvals<span id="approval-dot" class="approval-count" style="display:none"></span></div>
         <div class="nav-item" data-admin-view="coa-approvals" onclick="switchAdminView('coa-approvals')">COA approvals<span id="coa-approval-dot" class="approval-count" style="display:none"></span></div>
         <div class="nav-item" data-admin-view="payroll" onclick="switchAdminView('payroll')">Payroll</div>
-        <div class="nav-item" data-admin-view="invoices" onclick="switchAdminView('invoices')">Invoices</div>
+        <div class="nav-item" data-admin-view="invoices" onclick="switchAdminView('invoices')">Invoices<span id="inv-gap-dot" class="approval-count" style="display:none" title="Finished cutoffs with shifts not on any invoice"></span></div>
         <div class="nav-item" data-admin-view="holidays" onclick="switchAdminView('holidays')">Holidays</div>
       </div>
     </div>
@@ -1396,6 +1396,8 @@
           <div class="page-sub">Generate a bi-weekly / monthly invoice from actual hours worked</div>
         </div>
       </div>
+
+      <div id="uninvoiced-panel"></div>
 
       <div class="panel" style="margin-bottom:18px;">
         <div class="panel-header"><div class="panel-title">Current cutoffs</div>
@@ -3447,7 +3449,12 @@ function daysBetween(a, b) {
 function round2(n) { return Math.round(n*100)/100; }
 function currency(n) { return '₱' + n.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}); }
 
-function periodRange(period) {
+/* `customFrom` names the pair of date inputs a 'custom' period reads:
+ * 'ts' (the employee's own timesheet, the default) or 'admin-ts'. Both pairs
+ * are in the page at once, so without it All timesheets read the EMPLOYEE
+ * pair - always blank for an admin - and every custom range silently became
+ * "this month so far", in the table and in the CSV export alike. */
+function periodRange(period, customFrom) {
   const t = today();  /* PH today */
   let start, end;
   if (period === 'this-week') {
@@ -3478,8 +3485,9 @@ function periodRange(period) {
     end = addDays(firstOfThis, -1);
   } else if (period === 'custom') {
     /* Read from custom date inputs if present; fall back to current month */
-    const fromEl = document.getElementById('ts-custom-from') || document.getElementById('admin-ts-custom-from');
-    const toEl = document.getElementById('ts-custom-to') || document.getElementById('admin-ts-custom-to');
+    const pre = customFrom || 'ts';
+    const fromEl = document.getElementById(pre + '-custom-from');
+    const toEl = document.getElementById(pre + '-custom-to');
     start = (fromEl && fromEl.value) || t.slice(0,8) + '01';
     end = (toEl && toEl.value) || t;
     if (start > end) { const tmp = start; start = end; end = tmp; }
@@ -5841,6 +5849,7 @@ function renderAdmin() {
   const coaDot = document.getElementById('coa-approval-dot');
   if (pendingCoas > 0) { coaDot.style.display='inline-block'; coaDot.textContent = pendingCoas; } else coaDot.style.display='none';
   renderPendingApprovals();
+  renderUninvoicedPanel();
 
   const activeTbody = document.getElementById('active-employees');
   const shown = active.concat(staleOpen);
@@ -6764,7 +6773,7 @@ function renderAdminTimesheets() {
    * terminated. */
   const picked = multiValues('admin-ts-emp');
   const periodKey = document.getElementById('admin-ts-period').value;
-  const p = periodRange(periodKey);
+  const p = periodRange(periodKey, 'admin-ts');
 
   let entries = D.entries.filter(e => e.status==='completed' && e.date>=p.start && e.date<=p.end);
   entries = entries.filter(e => picked.indexOf(e.userId) !== -1);
@@ -6985,7 +6994,7 @@ async function executeDeleteEntry() {
 function exportTimesheetCSV() {
   const picked = multiValues('admin-ts-emp');
   const periodKey = document.getElementById('admin-ts-period').value;
-  const p = periodRange(periodKey);
+  const p = periodRange(periodKey, 'admin-ts');
   let entries = D.entries.filter(e => e.status==='completed' && e.date>=p.start && e.date<=p.end);
   entries = entries.filter(e => picked.indexOf(e.userId) !== -1);
   entries.sort((a,b)=>b.date.localeCompare(a.date));
@@ -8119,7 +8128,25 @@ function previewCycle() {
     <div style="font-weight:600; margin-bottom:6px;">Derived schedule</div>
     <div style="color:var(--ink-soft);">Previous: ${cycleLabel(prv)}</div>
     <div style="font-weight:600; color:var(--vc-navy);">Current: ${cycleLabel(cur)}</div>
-    <div style="color:var(--ink-soft);">Next: ${cycleLabel(nxt)}</div>`;
+    <div style="color:var(--ink-soft);">Next: ${cycleLabel(nxt)}</div>` +
+    (cycleAnchorWarning(anchor, freq)
+      ? `<div style="margin-top:8px; padding:8px 10px; border-left:3px solid var(--vc-orange); background:rgba(232,119,34,0.08); color:var(--ink);">⚠ ${cycleAnchorWarning(anchor, freq)}</div>`
+      : '');
+}
+
+/* A bi-weekly cutoff is a Mon–Sun fortnight. An anchor on any other weekday
+ * shifts the whole schedule: on 2026-07-28 Jona's was saved as a TUESDAY, so
+ * her cutoffs ran Tue–Mon while everyone else's ran Mon–Fri. Her invoice for
+ * Oct 6–19 swallowed the next cutoff's Monday, the app then saw "your last
+ * completed cutoff already has an invoice", and she could not request
+ * Oct 19–30 at all. Monthly and twice-a-month anchors are a day of the
+ * month, so any weekday is fine there. */
+function cycleAnchorWarning(anchor, freq) {
+  if (!anchor || (freq || 'biweekly') !== 'biweekly') return '';
+  const dow = phDayOfWeek(anchor);
+  if (dow === 1) return '';
+  const day = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][dow];
+  return `This starts on a ${day}. Bi-weekly cutoffs normally start on a Monday — a ${day} start makes every cutoff run ${day} to ${['Saturday','Sunday','Monday','Tuesday','Wednesday','Thursday','Friday'][dow]}, out of step with everyone else.`;
 }
 
 async function saveCycle() {
@@ -8131,6 +8158,9 @@ async function saveCycle() {
   const capRaw = document.getElementById('cyc-cap').value;
   const cap = (capRaw === '' || capRaw === null) ? null : Number(capRaw);
   if (cap !== null && (!isFinite(cap) || cap <= 0)) { toast('Cap must be a positive number, or blank for no cap'); return; }
+  const anchorWarn = cycleAnchorWarning(anchor, freq);
+  if (anchorWarn && !(await appConfirm(anchorWarn + ' Save it anyway?',
+      { title: 'Cutoff does not start on a Monday', okLabel: 'Save anyway' }))) return;
 
   const patch = {
     cycle_anchor: anchor,
@@ -8461,8 +8491,105 @@ function renderHolidays() {
 
 /* ============== INVOICES (admin) ============== */
 
+/* ---- Shifts no invoice covers ----
+ * An employee can only request their MOST RECENT finished cutoff. Miss one and
+ * it can never be requested again - nothing said so. Found 2026-11-02: Jona
+ * had ~95 hours in Sep 21 - Oct 2 and Daryl ten shifts in Sep 14 - 25 that
+ * no invoice covered, and nobody had noticed.
+ *
+ * This lists completed shifts that sit in a cutoff OLDER than the one the
+ * employee can still request, on a date no invoice of theirs covers (any
+ * state: requested, draft, sent, disputed, acknowledged). It starts at their
+ * first invoice, so time logged before invoicing moved into the app is not
+ * reported. "Hide" is for days settled some other way and is remembered in
+ * this browser only. */
+const UNINVOICED_OK_KEY = 'vc_uninvoiced_ok';
+function uninvoicedHidden() {
+  try { return new Set(JSON.parse(localStorage.getItem(UNINVOICED_OK_KEY) || '[]')); }
+  catch (e) { return new Set(); }
+}
+function findUninvoicedShifts(user) {
+  if (!user || !user.cycleAnchor || user.terminatedAt) return [];
+  const invs = D.invoices.filter(i => i.userId === user.id && i.periodStart && i.periodEnd);
+  if (!invs.length) return [];
+  const firstStart = invs.reduce((m, i) => i.periodStart < m ? i.periodStart : m, invs[0].periodStart);
+  const cur = currentCycle(user);
+  if (!cur) return [];
+  const requestable = cycleReadyToInvoice(user, cur) ? cur : shiftCycle(user, cur, -1);
+  if (!requestable) return [];
+  const hidden = uninvoicedHidden();
+  const loose = D.entries.filter(e => e.userId === user.id && e.status === 'completed' &&
+    e.date >= firstStart && e.date < requestable.start &&
+    !hidden.has(user.id + '|' + e.date) &&
+    !invs.some(i => e.date >= i.periodStart && e.date <= i.periodEnd));
+  const groups = {};
+  for (const e of loose) {
+    const c = cycleForDate(user, e.date);
+    const k = c ? c.start : e.date;
+    const g = groups[k] || (groups[k] = { userId: user.id, cutoff: c, from: e.date, to: e.date, dates: [], shifts: 0, hours: 0 });
+    if (e.date < g.from) g.from = e.date;
+    if (e.date > g.to) g.to = e.date;
+    if (!g.dates.includes(e.date)) g.dates.push(e.date);
+    g.shifts++;
+    g.hours = round2(g.hours + workedHours(e));
+  }
+  return Object.keys(groups).sort().map(k => groups[k]);
+}
+function allUninvoicedGaps() {
+  return D.users.filter(u => u.role === 'employee' && !u.terminatedAt).slice().sort(byName)
+    .flatMap(u => findUninvoicedShifts(u).map(g => Object.assign(g, { name: u.name })));
+}
+function renderUninvoicedPanel() {
+  const gaps = allUninvoicedGaps();
+  const dot = document.getElementById('inv-gap-dot');
+  if (dot) { dot.style.display = gaps.length ? 'inline-block' : 'none'; dot.textContent = gaps.length; }
+  const box = document.getElementById('uninvoiced-panel');
+  if (!box) return gaps;
+  if (!gaps.length) { box.innerHTML = ''; return gaps; }
+  box.innerHTML = `<div class="panel" style="border-left:3px solid var(--vc-orange); margin-bottom:18px;">
+    <div class="panel-header"><div class="panel-title">Shifts not on any invoice (${gaps.length})</div>
+      <span class="page-sub" style="font-size:11px;">These cutoffs are over and the employee can no longer request them. Create the invoice here, or hide it if it was paid another way.</span>
+    </div>
+    <table><thead><tr><th>Employee</th><th>Cutoff</th><th>Days not invoiced</th><th>Shifts</th><th>Hours</th><th></th></tr></thead><tbody>` +
+    gaps.map(g => `<tr>
+      <td><strong style="color:var(--ink)">${escAttr(g.name)}</strong></td>
+      <td>${g.cutoff ? fmtDate(g.cutoff.start) + ' – ' + fmtDate(g.cutoff.end) : '—'}</td>
+      <td>${g.from === g.to ? fmtDate(g.from) : fmtDate(g.from) + ' – ' + fmtDate(g.to)}<br><span style="font-size:10px; color:var(--ink-muted);">${g.dates.length} day${g.dates.length === 1 ? '' : 's'}</span></td>
+      <td class="mono">${g.shifts}</td>
+      <td class="mono">${g.hours}</td>
+      <td><div class="actions-cell">
+        <button class="btn btn-sm" data-gap-invoice onclick="openGapInvoice('${escAttr(g.userId)}', '${g.from}', '${g.to}')">Create invoice…</button>
+        <button class="btn btn-ghost btn-sm" data-gap-hide onclick="hideUninvoiced('${escAttr(g.userId)}', '${g.from}', '${g.to}')">Already paid — hide</button>
+      </div></td>
+    </tr>`).join('') + '</tbody></table></div>';
+  return gaps;
+}
+/* Opens the normal builder on a custom range covering exactly the loose days. */
+function openGapInvoice(uid, from, to) {
+  REVISING_ID = null;
+  openInvoiceBuilder(uid, 0, true);
+  if (!IB) return;
+  document.getElementById('ib-from').value = from;
+  document.getElementById('ib-to').value = to;
+  onIbDateChange();
+}
+async function hideUninvoiced(uid, from, to) {
+  const u = D.users.find(x => x.id === uid);
+  const g = findUninvoicedShifts(u).find(x => x.from === from && x.to === to);
+  if (!g) return;
+  const ok = await appConfirm(`Hide ${g.shifts} shift${g.shifts === 1 ? '' : 's'} (${g.hours} hrs) for ${u.name}, ${fmtDate(from)}${from === to ? '' : ' – ' + fmtDate(to)}? Only do this if they were paid some other way. This is remembered on this browser only.`,
+    { title: 'Hide from "not on any invoice"', okLabel: 'Hide' });
+  if (!ok) return;
+  const hidden = uninvoicedHidden();
+  g.dates.forEach(d => hidden.add(uid + '|' + d));
+  try { localStorage.setItem(UNINVOICED_OK_KEY, JSON.stringify([...hidden])); }
+  catch (e) { toast('This browser would not save that — the row will come back on reload.'); }
+  renderUninvoicedPanel();
+}
+
 /* Row per employee showing their live cutoff and what it would bill today. */
 function renderCutoffs() {
+  renderUninvoicedPanel();
   const tbody = document.getElementById('cutoff-rows');
   if (!tbody) return;
   /* Only active employees get a "what would I invoice right now" preview —
