@@ -12,6 +12,7 @@ node tests/test-signup-approval.cjs # pending signups: kept off rosters, approve
 node tests/test-open-shift-not-absent.cjs # a shift still open is not an absence
 node tests/test-long-shift.cjs        # 12+ hour shifts must be confirmed, never silently recorded
 node tests/test-uninvoiced.cjs        # non-Monday cutoff warning + shifts no invoice covers
+node tests/test-coa-window.cjs        # COA dates cover the whole open cutoff, not just 30 days
 ```
 
 They live in the repo on purpose: earlier suites were written in a temp

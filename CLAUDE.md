@@ -411,6 +411,13 @@ pairs are in the page at once; before 2026-11-02 the admin side read the
 employee's blank pair and every admin custom range (table and CSV) silently
 became "this month so far".
 
+### COA date window (`eligibleCoaDates`, `coaOpenCutoffStart`)
+
+The COA date list covers the last 30 days **or** the whole cutoff the employee
+can still invoice, whichever reaches further back. A monthly cutoff is 31 days,
+so a flat 30-day window dropped its first days: on 2026-11-04 Angela (Oct 1–31)
+could not file the Oct 2 COA HR had asked for. Tests: `tests/test-coa-window.cjs`.
+
 ### Cutoff release (`cycleReadyToInvoice`)
 
 A cutoff is invoiceable when the WORK is done, not when the calendar says so:

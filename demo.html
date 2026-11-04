@@ -5554,7 +5554,11 @@ async function cancelLeave(id) {
 /*
  * Eligible dates for a COA request (employee side):
  *  - Date is in the past (not today, not future)
- *  - Date is within the last 30 days (sensible window)
+ *  - Date is within the last 30 days (sensible window), OR inside the cutoff
+ *    the employee can still request an invoice for. A monthly cutoff is 31
+ *    days long, so on Nov 4 the 30-day window started at Oct 5 and Angela
+ *    could not file a COA for Oct 2 of her still-open Oct 1-31 cutoff - the
+ *    very day HR had asked her to correct (reported 2026-11-04).
  *  - Date is on/after COA_MIN_DATE (all data starts June 1, 2026)
  *  - There is no PENDING coa for that same date already
  *  - A REJECTED coa for that date doesn't block (employee can refile with better info)
@@ -5569,9 +5573,11 @@ function eligibleCoaDates() {
   const u = currentUser();
   const t = today();
   const dates = [];
-  for (let i = 1; i <= 30; i++) {
+  const open = coaOpenCutoffStart(u);
+  const oldest = (open && open < addDays(t, -30)) ? open : addDays(t, -30);
+  for (let i = 1; addDays(t, -i) >= oldest; i++) {
     const d = addDays(t, -i);
-    if (d < COA_MIN_DATE) continue;  /* nothing before data start date is eligible */
+    if (d < COA_MIN_DATE) break;  /* nothing before data start date is eligible */
     const hasPendingCoa = D.coas.find(c => c.userId===u.id && c.date===d && c.status==='pending');
     if (hasPendingCoa) continue;
     const entry = D.entries.find(e => e.userId===u.id && e.date===d);
@@ -5585,6 +5591,16 @@ function eligibleCoaDates() {
     dates.push({ value: d, label, type });
   }
   return dates;
+}
+
+/* First day of the oldest cutoff this employee can still invoice: the one
+ * empRequestableCutoff() would offer, or the current one if that is it.
+ * Every day from there is still billable, so it must stay correctable. */
+function coaOpenCutoffStart(u) {
+  const cur = currentCycle(u);
+  if (!cur) return null;
+  const req = cycleReadyToInvoice(u, cur) ? cur : shiftCycle(u, cur, -1);
+  return (req || cur).start;
 }
 
 /* Formats the clock-out cell, appending "(+1)" if the COA spans midnight. */
@@ -5620,7 +5636,7 @@ function openCoaModal() {
   const eligible = eligibleCoaDates();
   const sel = document.getElementById('coa-date');
   if (eligible.length === 0) {
-    sel.innerHTML = '<option value="">No eligible dates (no correctable attendance in last 30 days)</option>';
+    sel.innerHTML = '<option value="">No eligible dates (no correctable attendance in your open cutoff or the last 30 days)</option>';
   } else {
     sel.innerHTML = eligible.map(d => `<option value="${d.value}" data-type="${d.type}">${d.label}</option>`).join('');
   }
