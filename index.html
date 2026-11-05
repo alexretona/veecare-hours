@@ -5379,6 +5379,12 @@ async function cancelLeave(id) {
  *    days long, so on Nov 4 the 30-day window started at Oct 5 and Angela
  *    could not file a COA for Oct 2 of her still-open Oct 1-31 cutoff - the
  *    very day HR had asked her to correct (reported 2026-11-04).
+ *    Her cutoff actually runs 3rd-2nd, so Oct 2 closed the PREVIOUS cutoff
+ *    (Sep 3 - Oct 2, invoice #067 already acknowledged). The window therefore
+ *    reaches back one more cutoff: the last day of a cutoff is the one most
+ *    often still being fixed when its invoice goes in. A day that is already
+ *    on an invoice says so in the form (coaInvoiceFor) - an approved COA
+ *    changes the timesheet, never an issued invoice.
  *  - Date is on/after COA_MIN_DATE (all data starts June 1, 2026)
  *  - There is no PENDING coa for that same date already
  *  - A REJECTED coa for that date doesn't block (employee can refile with better info)
@@ -5393,7 +5399,7 @@ function eligibleCoaDates() {
   const u = currentUser();
   const t = today();
   const dates = [];
-  const open = coaOpenCutoffStart(u);
+  const open = coaOldestCutoffStart(u);
   const oldest = (open && open < addDays(t, -30)) ? open : addDays(t, -30);
   for (let i = 1; addDays(t, -i) >= oldest; i++) {
     const d = addDays(t, -i);
@@ -5413,14 +5419,22 @@ function eligibleCoaDates() {
   return dates;
 }
 
-/* First day of the oldest cutoff this employee can still invoice: the one
- * empRequestableCutoff() would offer, or the current one if that is it.
- * Every day from there is still billable, so it must stay correctable. */
-function coaOpenCutoffStart(u) {
+/* First day of the cutoff BEFORE the one this employee can still invoice
+ * (the one empRequestableCutoff() would offer). The requestable cutoff is
+ * still billable; the one before it is usually just invoiced and still being
+ * reconciled - Angela's Oct 2 COA fell there. */
+function coaOldestCutoffStart(u) {
   const cur = currentCycle(u);
   if (!cur) return null;
-  const req = cycleReadyToInvoice(u, cur) ? cur : shiftCycle(u, cur, -1);
-  return (req || cur).start;
+  const req = (cycleReadyToInvoice(u, cur) ? cur : shiftCycle(u, cur, -1)) || cur;
+  const prev = shiftCycle(u, req, -1);
+  return (prev || req).start;
+}
+
+/* The invoice already covering this date for this employee, if any. */
+function coaInvoiceFor(u, date) {
+  return D.invoices.find(i => i.userId === u.id && i.periodStart && i.periodEnd &&
+    date >= i.periodStart && date <= i.periodEnd) || null;
 }
 
 /* Formats the clock-out cell, appending "(+1)" if the COA spans midnight. */
@@ -5515,6 +5529,11 @@ function prefillCoaForDate() {
       note.textContent = 'This day is missing a clock-out. Confirm the times and submit for approval.';
     } else {
       note.textContent = 'No entry was filed for this day. Enter your times and submit for approval.';
+    }
+    const inv = date ? coaInvoiceFor(u, date) : null;
+    if (inv) {
+      note.textContent += ' Note: this day is already on invoice #' + (inv.invoiceNo || '') +
+        ' (' + fmtDate(inv.periodStart) + ' – ' + fmtDate(inv.periodEnd) + '). An approved correction updates your timesheet, not that invoice - tell HR if it changes your pay.';
     }
   }
   updateCoaLunchHint();
@@ -7634,6 +7653,16 @@ function renderCoaApprovals() {
 async function approveCoa(id) {
   const c = D.coas.find(x => x.id===id);
   if (!c) return;
+  /* A COA can now land on a day an invoice already covers (the previous
+   * cutoff is correctable). Approving changes the timesheet only - say so
+   * before the write, so nobody assumes the invoice followed. */
+  const cu = D.users.find(u => u.id === c.userId);
+  const covering = cu ? coaInvoiceFor(cu, c.date) : null;
+  if (covering && !(await appConfirm(
+      fmtDate(c.date) + ' is already on invoice #' + (covering.invoiceNo || '') + ' (' +
+      fmtDate(covering.periodStart) + ' – ' + fmtDate(covering.periodEnd) + ', ' + covering.workflow +
+      '). Approving updates the timesheet only; the invoice keeps its amounts. Revise the invoice separately if pay should change.',
+      { title: 'Day is already invoiced', okLabel: 'Approve anyway' }))) return;
   const decidedAt = nowISO();
 
   const { error } = await sb.from('coa_requests')

@@ -411,12 +411,21 @@ pairs are in the page at once; before 2026-11-02 the admin side read the
 employee's blank pair and every admin custom range (table and CSV) silently
 became "this month so far".
 
-### COA date window (`eligibleCoaDates`, `coaOpenCutoffStart`)
+### COA date window (`eligibleCoaDates`, `coaOldestCutoffStart`, `coaInvoiceFor`)
 
-The COA date list covers the last 30 days **or** the whole cutoff the employee
-can still invoice, whichever reaches further back. A monthly cutoff is 31 days,
-so a flat 30-day window dropped its first days: on 2026-11-04 Angela (Oct 1–31)
-could not file the Oct 2 COA HR had asked for. Tests: `tests/test-coa-window.cjs`.
+The COA date list covers the last 30 days **or** back to the start of the
+cutoff *before* the one the employee can still invoice, whichever reaches
+further. On 2026-11-04 Angela (monthly, anchored on the 3rd, so cutoffs run
+3rd–2nd) could not file the Oct 2 COA HR had asked for: Oct 2 closed the
+previous cutoff (Sep 3 – Oct 2, invoice #067, already acknowledged), and a flat
+30-day window stopped at Oct 5. The last day of a cutoff is the one most often
+still being fixed when its invoice goes in.
+
+A day that is already on an invoice is still correctable, but **an approved COA
+changes the timesheet, never an issued invoice**. The employee form says so
+(`coaInvoiceFor`), and `approveCoa()` asks the admin to confirm, naming the
+invoice. Revise the invoice separately if pay should change.
+Tests: `tests/test-coa-window.cjs`.
 
 ### Cutoff release (`cycleReadyToInvoice`)
 
