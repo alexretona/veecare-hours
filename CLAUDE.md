@@ -385,6 +385,22 @@ A shift still open is **present**, not absent, on both timesheets ("Still
 working" / "No clock-out"); it adds no hours until closed
 (`tests/test-open-shift-not-absent.cjs`).
 
+### Stale screens must not overwrite a shift (`startLunch`, `endLunch`, `resyncEntry`)
+
+There is no realtime sync, so a page left open shows the shift as it was when
+loaded. On 2026-11-11 Mari (in 8:50 PM Nov 10, lunch 2:29–3:10 AM) clicked
+**Start lunch break** at 6:00 AM on a page still open from before her lunch. The
+write replaced her finished lunch's start with 6:00 AM (after its 3:10 end) and
+left the shift open; an admin later force-closed it at the clock-in + 8h default
+(4:50 AM), and the backwards lunch counted as −170 min, so the shift showed
+10.82 hrs. Now:
+- the lunch writes are conditional (`.is('lunch_start', null)` /
+  `.is('lunch_end', null)` and `status = 'in-progress'`); when nothing matches,
+  the screen re-reads the row (`resyncEntry`) and says it was out of date;
+- `lunchMinutes()` never goes below 0, so a bad row can never add pay;
+- `earliestClockOut()` also respects a lunch start.
+Tests: `tests/test-lunch-stale.cjs`.
+
 ### Missed cutoffs and Monday anchors (`findUninvoicedShifts`, `cycleAnchorWarning`)
 
 An employee can only request their **most recent** finished cutoff, so a cutoff

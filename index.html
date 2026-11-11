@@ -3210,7 +3210,11 @@ const LUNCH_LIMIT_MIN = 60;
 
 function lunchMinutes(entry) {
   if (!entry || !entry.lunchStart || !entry.lunchEnd) return 0;
-  return (new Date(entry.lunchEnd) - new Date(entry.lunchStart)) / 60000;
+  /* Never negative. A lunch END before its START once made lunch count as
+   * -170 minutes, which workedHours() then ADDED to the shift (Mari, Nov 10:
+   * 8 hrs on the clock recorded as 10.82). startLunch() can no longer
+   * produce that row, but a bad row must still never inflate pay. */
+  return Math.max(0, (new Date(entry.lunchEnd) - new Date(entry.lunchStart)) / 60000);
 }
 
 function isLunchOver(entry) {
@@ -3639,6 +3643,7 @@ function hoursIfClosedAt(entry, iso) {
 function earliestClockOut(entry) {
   let t = entry.clockIn;
   if (entry.lunchEnd && entry.lunchEnd > t) t = entry.lunchEnd;
+  if (entry.lunchStart && entry.lunchStart > t) t = entry.lunchStart;
   for (const p of pauseList(entry)) if (p.end && p.end > t) t = p.end;
   return t;
 }
@@ -4718,6 +4723,18 @@ async function clockIn() {
   btn.disabled = false;
 }
 
+/* Re-read one time entry from the database into D.entries and redraw. Used
+ * when a write finds the row no longer in the state this screen showed. */
+async function resyncEntry(id) {
+  const { data, error } = await sb.from('time_entries').select('*').eq('id', id);
+  if (!error && data && data[0]) {
+    const fresh = entryFromRow(data[0]);
+    const i = D.entries.findIndex(e => e.id === id);
+    if (i >= 0) D.entries[i] = fresh; else D.entries.push(fresh);
+  }
+  renderEmployee();
+}
+
 async function startLunch() {
   const u = currentUser();
   const entry = activeEntry(u.id);
@@ -4734,11 +4751,24 @@ async function startLunch() {
   btn.textContent = 'Starting...';
 
   const ts = nowISO();
-  const { error } = await sb.from('time_entries').update({ lunch_start: ts }).eq('id', entry.id);
+  /* Only if the DATABASE still has no lunch on this shift. The check above
+   * reads this screen's copy, which can be hours old: on 2026-11-11 a page
+   * left open from before Mari's 2:29 AM lunch still offered "Start lunch
+   * break" at 6:00 AM, and the click overwrote her finished lunch with a new
+   * start AFTER its end - and left her shift open instead of clocked out. */
+  const { data: started, error } = await sb.from('time_entries').update({ lunch_start: ts })
+    .eq('id', entry.id).eq('status', 'in-progress').is('lunch_start', null).select('id');
   if (error) {
     toast('Could not start lunch: ' + error.message);
     btn.disabled = false;
     btn.textContent = 'Start lunch break';
+    return;
+  }
+  if (!started || started.length === 0) {
+    btn.disabled = false;
+    btn.textContent = 'Start lunch break';
+    await resyncEntry(entry.id);
+    toast('This screen was out of date - your lunch (or clock-out) was already recorded. It has been refreshed; check your status before doing anything else.');
     return;
   }
   entry.lunchStart = ts;
@@ -4760,11 +4790,20 @@ async function endLunch() {
   btn.textContent = 'Ending...';
 
   const ts = nowISO();
-  const { error } = await sb.from('time_entries').update({ lunch_end: ts }).eq('id', entry.id);
+  /* Same stale-screen guard as startLunch(). */
+  const { data: ended, error } = await sb.from('time_entries').update({ lunch_end: ts })
+    .eq('id', entry.id).eq('status', 'in-progress').is('lunch_end', null).select('id');
   if (error) {
     toast('Could not end lunch: ' + error.message);
     btn.disabled = false;
     btn.textContent = 'End lunch break';
+    return;
+  }
+  if (!ended || ended.length === 0) {
+    btn.disabled = false;
+    btn.textContent = 'End lunch break';
+    await resyncEntry(entry.id);
+    toast('This screen was out of date - your lunch had already ended. It has been refreshed; check your status before doing anything else.');
     return;
   }
   entry.lunchEnd = ts;
