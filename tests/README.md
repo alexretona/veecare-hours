@@ -14,6 +14,7 @@ node tests/test-long-shift.cjs        # 12+ hour shifts must be confirmed, never
 node tests/test-uninvoiced.cjs        # non-Monday cutoff warning + shifts no invoice covers
 node tests/test-coa-window.cjs        # COA dates reach the previous cutoff; invoiced days warn
 node tests/test-lunch-stale.cjs        # a page left open cannot overwrite a recorded lunch
+node tests/test-password-reset.cjs    # forgot-password reports a failed send; echoes the address
 ```
 
 They live in the repo on purpose: earlier suites were written in a temp
