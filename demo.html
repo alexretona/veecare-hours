@@ -4065,14 +4065,26 @@ async function sendPasswordReset() {
   const btn = document.getElementById('fp-send-btn');
   btn.disabled = true; btn.textContent = 'Sending\u2026';
   setLoginMsg('fp-msg', '');
+  /* Supabase answers an unknown address with plain success, so an ERROR
+   * here is a real failure to send (rate limit, mailer refusal) - not a hint
+   * about which emails exist. It used to be swallowed into the success
+   * message, and on 2026-11-16 nobody could tell a failed send from a
+   * mistyped address. Echoing the address back is what catches the typo:
+   * that request went to kylieadriennechia@ for adriennekyliechia@. */
+  let failed = null;
   try {
     /* Send them back to this same page; the link arrives with a recovery
      * token that the boot below turns into the "choose a new password" step. */
-    await sb.auth.resetPasswordForEmail(email, {
+    const { error } = await sb.auth.resetPasswordForEmail(email, {
       redirectTo: window.location.origin + window.location.pathname
     });
-  } catch (e) { /* fall through to the same message */ }
-  setLoginMsg('fp-msg', 'If that email has a VeeCare account, a reset link is on its way. Check your inbox and spam folder - the link expires in 1 hour.');
+    if (error) failed = error;
+  } catch (e) { failed = e; }
+  if (failed) {
+    setLoginMsg('fp-msg', 'Could not send the reset email right now (' + (failed.message || 'unknown error') + '). Ask your admin to reset your password.', true);
+  } else {
+    setLoginMsg('fp-msg', 'If ' + email + ' has a VeeCare account, a reset link is on its way. Check your inbox and spam folder - the link expires in 1 hour. Nothing after a few minutes? Check the address is exactly the one you sign in with.');
+  }
   btn.disabled = false; btn.textContent = 'Send reset link';
 }
 

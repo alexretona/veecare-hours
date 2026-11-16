@@ -401,6 +401,24 @@ left the shift open; an admin later force-closed it at the clock-in + 8h default
 - `earliestClockOut()` also respects a lunch start.
 Tests: `tests/test-lunch-stale.cjs`.
 
+### Password reset (`sendPasswordReset`)
+
+The screen stays neutral about whether an address has an account (no account
+enumeration), but it echoes the address back and **reports a real send
+failure**: Supabase answers an unknown address with plain success, so any
+error from `resetPasswordForEmail` is a genuine failure (rate limit, mailer
+refusal), not a hint. It used to be swallowed into the success message.
+Tests: `tests/test-password-reset.cjs`.
+
+⚠️ As of 2026-11-16 no reset email had ever been sent from this project
+(`auth.users.recovery_sent_at` empty for everyone). Supabase's built-in mailer
+is rate-limited and may only deliver to project team members — custom SMTP
+(Authentication → Emails → SMTP settings) is what makes reset links reliable
+for staff. Until then an admin resets a password from the Supabase dashboard
+(Authentication → Users), or via SQL with
+`extensions.crypt('<temp>', extensions.gen_salt('bf', 10))` on
+`auth.users.encrypted_password`, and the employee changes it after sign-in.
+
 ### Missed cutoffs and Monday anchors (`findUninvoicedShifts`, `cycleAnchorWarning`)
 
 An employee can only request their **most recent** finished cutoff, so a cutoff
